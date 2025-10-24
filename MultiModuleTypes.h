@@ -64,6 +64,31 @@ typedef struct __attribute__((packed)) {
     uint8_t additional_data[MAX_ADD_DATA_BYTES]; // Stream[27..35]: Additional protocol data (optional)
 } MultiProtocolStream;
 
+typedef union {
+    uint8_t value; // Access the entire byte
+    struct {
+        uint8_t input_signal_detected : 1; // 0x01
+        uint8_t serial_mode_enabled : 1;    // 0x02
+        uint8_t protocol_is_valid : 1;      // 0x04
+        uint8_t module_is_in_binding_mode : 1; // 0x08
+        uint8_t module_waits_for_bind_event : 1; // 0x10
+        uint8_t protocol_supports_failsafe : 1;      // 0x20
+        uint8_t protocol_supports_disable_channel_mapping : 1; // 0x40
+        uint8_t data_buffer_almost_full : 1; // 0x80
+    } bits; // Access flags individually
+} MultiModuleStatusFlagsByte;
+
+typedef union {
+    uint8_t value; // Access the entire byte
+    struct {
+        uint8_t ch1 : 2; // Channel 1
+        uint8_t ch2 : 2; // Channel 2
+        uint8_t ch3 : 2; // Channel 3
+        uint8_t ch4 : 2; // Channel 4
+    } channels; // Access individual channels
+} ChannelOrder;
+
+const char* channelNames[] = {"A", "E", "T", "R"};
 
 typedef union {
     uint8_t value; // Complete byte access
@@ -76,17 +101,21 @@ typedef union {
 //note: following isn't the full telemetry response, but the expected response type when type==1
 // MultiModule Status definition
 typedef struct __attribute__((packed)) {
-    uint8_t flags;                              // Flags (Stream[4])
+    MultiModuleStatusFlagsByte flags;           // Flags
     uint8_t major;                              // Version Major
     uint8_t minor;                              // Version Minor
     uint8_t revision;                           // Revision
     uint8_t patchlevel;                         // Patchlevel
-    uint8_t channel_order;                   // Channel order
+    ChannelOrder channel_order;                 // Channel order
     uint8_t next_protocol;                      // Next valid protocol
     uint8_t prev_protocol;                      // Previous valid protocol
     char protocol_name[7];                       // Protocol name (null-terminated if len<7)
     OptionTextAndNumSubProtocols option_text_and_num_sub_protocols;  // Option text (e.g. OPTION_NONE, OPTION_OPTION) (high 4 bits);    // Number of sub protocols (low 4 bits)
     char sub_protocol_name[8];                       // Sub protocol names (null-terminated if len<8)
 } MultiModuleStatus;
+
+#define MULTI_MODULE_STATUS_TYPE 1
+
+#define FLYSKY_AFHDS2_TELEM_STATUS_TYPE 6
 
 #endif
