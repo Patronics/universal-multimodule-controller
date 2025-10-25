@@ -13,6 +13,8 @@
 char capturedData[MAX_TELEM_DATA_BYTES + 1]; // Pre-allocated buffer, +1 for null-terminator
 MultiModuleStatus moduleStatus;
 
+MultiProtocolStream streamOut;
+
 // the setup routine runs once when you press reset:
 void setup() {
   //initialize Serial1 on GPIO 16 and 17 (pins 21 and 22), at 100kbaud, even parity, 2 stop bits
@@ -21,6 +23,11 @@ void setup() {
   Serial1.setInvertRX(true);
   Serial1.begin(100000, SERIAL_8E2);
   Serial.begin(); //init USB serial
+  //initialize stream values
+  streamOut.header.reserved_bits=0b010101;
+  streamOut.header.is_failsafe=0;
+  setProtocolMode(streamOut, 28, 0); //a single protocol hardcoded for now, 28=AFHDS2A, 0=PWM_IBUS
+  //TODO init remaining configuration flags for streamOut
   while (!Serial) {
     ; // wait for USB serial port to connect
   }
@@ -28,11 +35,30 @@ void setup() {
 
 }
 
+/*note that protocol and subProtocol names are inconsistient in documentation, and thus some of the struct names may be confusing.
+In the multi-module docs,
+protocolNum is sometimes referred to as "subProtocol" but other times as "protocol"
+and subprotocolNum is sometimes referred to as "type" but other times as "subProtocol"
+*/
+void setProtocolMode(MultiProtocolStream s, uint8_t protocolNum, uint8_t subprotocolNum){
+  s.sub_protocol_flags.sub_protocol = protocolNum & 0x1F; //bits 0-4
+  s.header.sub_protocol_range = (protocolNum >> 5) & 0x01; //bit 5
+  s.extended_protocol.sub_protocol = (protocolNum >> 6) & 0x03; //bits 6-7
+  s.rx_num_power_type.type = subprotocolNum & 0x07; //type is 3 bits total
+}
+
 // the loop routine runs over and over again forever:
 void loop() {
   getTelemetry();
+  if(Serial.available()){ //commands from computer
+
+  }
   //Serial.println("looping");
   //delay(1);  // delay in between reads for stability
+}
+
+int getComputerCommand(){
+  return 0;
 }
 
 int getTelemetry(){

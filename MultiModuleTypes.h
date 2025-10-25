@@ -25,29 +25,29 @@ typedef union {  //valid values range 0x54-0x57
 typedef union {
     struct {
         uint8_t sub_protocol : 5;   // Bits 0-4
-        uint8_t RangeCheckBit : 1;   // Bit 5
-        uint8_t AutoBindBit : 1;     // Bit 6
-        uint8_t BindBit : 1;         // Bit 7
+        uint8_t rangeCheckBit : 1;   // Bit 5
+        uint8_t autoBindBit : 1;     // Bit 6
+        uint8_t bindBit : 1;         // Bit 7
     };
     uint8_t value;                  // Full byte access
 } SubProtocolFlags;
 
 typedef union {
     struct {
-        uint8_t RxNum : 4;          // Bits 0-3
-        uint8_t Type : 3;           // Bits 4-6
-        uint8_t Power : 1;          // Bit 7 (0=High, 1=Low)
+        uint8_t rxNum : 4;          // Bits 0-3
+        uint8_t type : 3;           // Bits 4-6
+        uint8_t power : 1;          // Bit 7 (0=High, 1=Low)
     };
     uint8_t value;                  // Full byte access
 } RxNumPowerType;
 
 typedef union {
     struct {
-        uint8_t Disable_CH_Mapping : 1; // Bit 0
-        uint8_t Disable_Telemetry : 1;   // Bit 1
-        uint8_t Future_Use : 1;          // Bit 2
-        uint8_t Telemetry_Invert : 1;     // Bit 3
-        uint8_t RxNum : 2;                // Bits 4-5, high bits of rxnum
+        uint8_t disable_CH_Mapping : 1; // Bit 0
+        uint8_t disable_Telemetry : 1;   // Bit 1
+        uint8_t future_Use : 1;          // Bit 2
+        uint8_t telemetry_Invert : 1;     // Bit 3
+        uint8_t rxNum : 2;                // Bits 4-5, high bits of rxnum
         uint8_t sub_protocol : 2;         // Bits 6-7, high bits of subprotocol
     };
     uint8_t value;                      // Full byte access
