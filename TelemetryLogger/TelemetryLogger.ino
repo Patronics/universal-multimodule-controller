@@ -1,27 +1,60 @@
 /*
-  DigitalReadSerial
-
-  Reads a digital input on pin 2, prints the result to the Serial Monitor
-
-  This example code is in the public domain.
-
-  https://docs.arduino.cc/built-in-examples/basics/DigitalReadSerial/
+TelemetryLogger.ino
+Written By Patrick Leiser
+Runs on Raspberry Pi Pico or similar RP2040 family boards
+This script reads telemetry data from a 4-in-one multimodule.
 */
 
 #include "MultiModuleTypes.h"
+
+#include <U8g2lib.h>
+#ifdef U8X8_HAVE_HW_SPI
+#include <SPI.h>
+#endif
+#ifdef U8X8_HAVE_HW_I2C
+#include <Wire.h>
+#endif
+
+//UART constants to configure:
+//adjust as needed for other platforms or Serial Ports
+#define SerialModule Serial2
+//comment out the following defines if on a non-RP2040 platform where UART pins are fixed
+#define SERIAL_MODULE_RX_PIN 5
+#define SERIAL_MODULE_TX_PIN 4
+#define SERIAL_MODULE_INVERT_RX
+
+const unsigned long SERIAL_MODULE_BAUD_RATE = 100000;
+
+
+//setup i2c display
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
 char capturedData[MAX_TELEM_DATA_BYTES + 1]; // Pre-allocated buffer, +1 for null-terminator
 MultiModuleStatus moduleStatus;
 
 MultiProtocolStream streamOut;
 
+
+
 // the setup routine runs once when you press reset:
 void setup() {
-  //initialize Serial1 on GPIO 16 and 17 (pins 21 and 22), at 100kbaud, even parity, 2 stop bits
-  Serial1.setRX(17);
-  Serial1.setTX(16);
-  Serial1.setInvertRX(true);
-  Serial1.begin(100000, SERIAL_8E2);
+  //set i2c pins for display
+  Wire.setSDA(20);
+  Wire.setSCL(21);
+  u8g2.begin();
+  u8g2.setFont(u8g2_font_tom_thumb_4x6_mf);
+
+  //initialize SerialModule on GPIO 16 and 17 (pins 21 and 22), at 100kbaud, even parity, 2 stop bits
+  #ifdef SERIAL_MODULE_RX_PIN
+    SerialModule.setRX(SERIAL_MODULE_RX_PIN);
+  #endif
+  #ifdef SERIAL_MODULE_TX_PIN
+    SerialModule.setTX(SERIAL_MODULE_TX_PIN);
+  #endif
+  #ifdef SERIAL_MODULE_INVERT_RX
+    SerialModule.setInvertRX(true);
+  #endif
+  SerialModule.begin(SERIAL_MODULE_BAUD_RATE, SERIAL_8E2);
   Serial.begin(); //init USB serial
   //initialize stream values
   streamOut.header.reserved_bits=0b010101;
@@ -32,6 +65,7 @@ void setup() {
     ; // wait for USB serial port to connect
   }
   Serial.println("start telemetry log.");
+  
 
 }
 
@@ -62,13 +96,13 @@ int getComputerCommand(){
 }
 
 int getTelemetry(){
-  if (Serial1.available() >= 4){
+  if (SerialModule.available() >= 4){
     //Serial.println("4 bytes");
-    if (Serial1.read() == 'M'){
-      if(Serial1.read() == 'P'){
+    if (SerialModule.read() == 'M'){
+      if(SerialModule.read() == 'P'){
         Serial.println("found valid header!");
-        char type = Serial1.read();
-        char length = Serial1.read();
+        char type = SerialModule.read();
+        char length = SerialModule.read();
         // Convert length byte to an integer for data capture
         int dataLength = (int)length;
         Serial.print("type:");
@@ -80,17 +114,17 @@ int getTelemetry(){
           return -1; // return error status
         }
         delay(4); //give data time to populate
-        if (Serial1.available() < dataLength) {
+        if (SerialModule.available() < dataLength) {
           Serial.println("Not enough data available!"); //note: if this occurs often, add a 10 microsecond delay
           Serial.print("expected ");
           Serial.print(dataLength);
           Serial.print(" bytes but only ");
-          Serial.print(Serial1.available());
+          Serial.print(SerialModule.available());
           Serial.println(" available.");
           return -2;
         }
         
-        Serial1.readBytes(capturedData, dataLength);
+        SerialModule.readBytes(capturedData, dataLength);
         capturedData[dataLength] = '\0'; // Null-terminate the string
         Serial.print("Captured Data in Hex: ");
         printBytesAsHex(capturedData, dataLength);
@@ -160,6 +194,9 @@ void printMultiModuleStatus(MultiModuleStatus status){
   // ---- parse channel order byte: CH4|CH3|CH2|CH1 with CHx value A=0,E=1,T=2,R=3  ----
   Serial.print("Protocol Name: ");
   printStringWithMaxLength(status.protocol_name, sizeof(status.protocol_name));
+
+  u8g2.drawStr(0,10,"Protocol: ");
+  writeStringToDispWithMaxLength(status.protocol_name, sizeof(status.protocol_name), 10,25);
   Serial.print("\nSub-Protocol Name: ");
   printStringWithMaxLength(status.sub_protocol_name, sizeof(status.sub_protocol_name));
   // ---- Option text and number of sub protocols ----
@@ -171,6 +208,7 @@ void printMultiModuleStatus(MultiModuleStatus status){
   Serial.print(status.prev_protocol);
   Serial.print(",");
   Serial.print(status.next_protocol);
+  u8g2.sendBuffer();
 }
 
 //print strings that may not be null-terminated if they reach max length
@@ -182,3 +220,16 @@ void printStringWithMaxLength(const char* str, int length){
     Serial.write(str[i]);
   }
 }
+
+void writeStringToDispWithMaxLength(const char* str, int length, int x, int y){
+  char buf[2];
+  buf[1] = 0; //terminating null
+  for(int i=0; i<length; i++){
+    if (str[i] == '\0') {
+      break; // Stop if a null byte is encountered
+    }
+    buf[0] = str[i];
+    u8g2.drawStr(x+(4*i),y,buf);
+  }
+}
+
