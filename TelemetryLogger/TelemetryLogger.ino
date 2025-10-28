@@ -14,6 +14,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 #ifdef U8X8_HAVE_HW_I2C
 #include <Wire.h>
 #endif
+#include <Bounce2.h>
 
 //UART constants to configure:
 //adjust as needed for other platforms or Serial Ports
@@ -24,14 +25,35 @@ This script reads telemetry data from a 4-in-one multimodule.
 #define SERIAL_MODULE_INVERT_RX
 
 const unsigned long SERIAL_MODULE_BAUD_RATE = 100000;
+const int SERIAL_MODULE_BUFFER_SIZE = 128;
 
 const int DISPLAY_STR_BUFFER_SIZE = 32;
 const int CHAR_WIDTH = 4;
 
+unsigned long lastTelemetryMillis = 0;
 
 //setup i2c display
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
+//UI buttons
+#define OK_BUTTON_PIN 11
+#define BACK_BUTTON_PIN 15
+#define UP_BUTTON_PIN 10
+#define DOWN_BUTTON_PIN 12
+#define LEFT_BUTTON_PIN 14
+#define RIGHT_BUTTON_PIN 13
+
+const uint16_t BUTTON_DEBOUNCE_INTERVAL = 5;
+
+Bounce2::Button okButton;
+Bounce2::Button backButton;
+Bounce2::Button upButton;
+Bounce2::Button downButton;
+Bounce2::Button leftButton;
+Bounce2::Button rightButton;
+
+
+//data structures for status and output
 char capturedData[MAX_TELEM_DATA_BYTES + 1]; // Pre-allocated buffer, +1 for null-terminator
 MultiModuleStatus moduleStatus;
 
@@ -41,6 +63,31 @@ MultiProtocolStream streamOut;
 
 // the setup routine runs once when you press reset:
 void setup() {
+
+  //bounce2 setup
+  okButton.attach(OK_BUTTON_PIN, INPUT_PULLDOWN);
+  backButton.attach(BACK_BUTTON_PIN, INPUT_PULLDOWN);
+  upButton.attach(UP_BUTTON_PIN, INPUT_PULLDOWN);
+  downButton.attach(DOWN_BUTTON_PIN, INPUT_PULLDOWN);
+  leftButton.attach(LEFT_BUTTON_PIN, INPUT_PULLDOWN);
+  rightButton.attach(RIGHT_BUTTON_PIN, INPUT_PULLDOWN);
+
+  //debounce interval
+  okButton.interval(BUTTON_DEBOUNCE_INTERVAL);
+  backButton.interval(BUTTON_DEBOUNCE_INTERVAL);
+  upButton.interval(BUTTON_DEBOUNCE_INTERVAL);
+  downButton.interval(BUTTON_DEBOUNCE_INTERVAL);
+  leftButton.interval(BUTTON_DEBOUNCE_INTERVAL);
+  rightButton.interval(BUTTON_DEBOUNCE_INTERVAL);
+
+  okButton.setPressedState(HIGH);
+  backButton.setPressedState(HIGH);
+  upButton.setPressedState(HIGH);
+  downButton.setPressedState(HIGH);
+  leftButton.setPressedState(HIGH);
+  rightButton.setPressedState(HIGH);
+
+
   //set i2c pins for display
   Wire.setSDA(20);
   Wire.setSCL(21);
@@ -57,13 +104,16 @@ void setup() {
   #ifdef SERIAL_MODULE_INVERT_RX
     SerialModule.setInvertRX(true);
   #endif
+  SerialModule.setFIFOSize(SERIAL_MODULE_BUFFER_SIZE);
   SerialModule.begin(SERIAL_MODULE_BAUD_RATE, SERIAL_8E2);
   Serial.begin(); //init USB serial
   //initialize stream values
+  //start setting up output data structures
   streamOut.header.reserved_bits=0b010101;
   streamOut.header.is_failsafe=0;
   setProtocolMode(streamOut, 28, 0); //a single protocol hardcoded for now, 28=AFHDS2A, 0=PWM_IBUS
   //TODO init remaining configuration flags for streamOut
+
   while (!Serial) {
     ; // wait for USB serial port to connect
   }
@@ -86,12 +136,46 @@ void setProtocolMode(MultiProtocolStream s, uint8_t protocolNum, uint8_t subprot
 
 // the loop routine runs over and over again forever:
 void loop() {
+  // Update each button's state
+  okButton.update();
+  backButton.update();
+  upButton.update();
+  downButton.update();
+  leftButton.update();
+  rightButton.update();
+
+    if (okButton.pressed()) {
+        Serial.println("OK Button Pressed!");
+    }
+
+    if (backButton.pressed()) {
+        Serial.println("Back Button Pressed!");
+    }
+
+    if (upButton.pressed()) {
+        Serial.println("Up Button Pressed!");
+    }
+
+    if (downButton.pressed()) {
+        Serial.println("Down Button Pressed!");
+    }
+
+    if (leftButton.pressed()) {
+        Serial.println("Left Button Pressed!");
+    }
+
+    if (rightButton.pressed()) {
+        Serial.println("Right Button Pressed!");
+    }
+
+
   getTelemetry();
   if(Serial.available()){ //commands from computer
 
   }
   //Serial.println("looping");
   //delay(1);  // delay in between reads for stability
+  u8g2.sendBuffer();
 }
 
 int getComputerCommand(){
@@ -99,10 +183,18 @@ int getComputerCommand(){
 }
 
 int getTelemetry(){
+  //if starting program and no telem received
+  u8g2.setCursor(0,5);
+  if(millis() < 15000 && lastTelemetryMillis == 0){
+    u8g2.print("waiting for telemetry...");
+  } else if (millis() - lastTelemetryMillis > 15000) {
+    u8g2.print("no telemetry available...");
+  }
   if (SerialModule.available() >= 4){
     //Serial.println("4 bytes");
     if (SerialModule.read() == 'M'){
       if(SerialModule.read() == 'P'){
+
         Serial.println("found valid header!");
         char type = SerialModule.read();
         char length = SerialModule.read();
@@ -116,7 +208,8 @@ int getTelemetry(){
           Serial.println("Invalid data length!");
           return -1; // return error status
         }
-        delay(4); //give data time to populate
+        lastTelemetryMillis = millis();
+        delay(5); //give data time to populate
         if (SerialModule.available() < dataLength) {
           Serial.println("Not enough data available!"); //note: if this occurs often, add a 10 microsecond delay
           Serial.print("expected ");
@@ -149,7 +242,13 @@ int getTelemetry(){
       }
     }
   }
-  u8g2.sendBuffer();
+
+  //check remaining serial data in buffer:
+  int bytesInBuffer = SerialModule.available();
+  if(bytesInBuffer > (SERIAL_MODULE_BUFFER_SIZE/2)){
+    Serial.print("WARN: SerialModule Buf half full to ");
+    Serial.println(bytesInBuffer);
+  }
   return 0;
 }
 
@@ -200,14 +299,17 @@ void printMultiModuleStatus(MultiModuleStatus status){
   Serial.println(channelNames[status.channel_order.channels.ch4]);
   // ---- parse channel order byte: CH4|CH3|CH2|CH1 with CHx value A=0,E=1,T=2,R=3  ----
   Serial.print("Protocol Name: ");
-  printStringWithMaxLength(status.protocol_name, sizeof(status.protocol_name));
-  u8g2.drawStr(0,5,"protocol: ");
-  drawStrWithMaxLength(50,5, status.protocol_name, sizeof(status.protocol_name));
+  serialPrintStringWithMaxLength(status.protocol_name, sizeof(status.protocol_name));
+  u8g2.setCursor(0,5);
+  u8g2.print("protocol:   ");
+  u8g2PrintStrWithMaxLength(status.protocol_name, sizeof(status.protocol_name));
 
   Serial.print("\nSub-Protocol Name: ");
-  printStringWithMaxLength(status.sub_protocol_name, sizeof(status.sub_protocol_name));
-  u8g2.drawStr(0,12,"subprotocol:");
-  drawStrWithMaxLength(50,12, status.sub_protocol_name, sizeof(status.sub_protocol_name));
+  serialPrintStringWithMaxLength(status.sub_protocol_name, sizeof(status.sub_protocol_name));
+  u8g2.print("          ");
+  u8g2.setCursor(0,12);
+  u8g2.print("subprotocol:");
+  u8g2PrintStrWithMaxLength(status.sub_protocol_name, sizeof(status.sub_protocol_name));
   // ---- Option text and number of sub protocols ----
   Serial.print("\nOption text type: ");  //todo: evaluate option text
   Serial.println(status.option_text_and_num_sub_protocols.parts.option_text);
@@ -220,7 +322,7 @@ void printMultiModuleStatus(MultiModuleStatus status){
 }
 
 //print strings that may not be null-terminated if they reach max length
-void printStringWithMaxLength(const char* str, int length){
+void serialPrintStringWithMaxLength(const char* str, int length){
   int actualLength = 0;
   for(int i=0; i<length; i++){
     if (str[i] == '\0') {
@@ -231,7 +333,8 @@ void printStringWithMaxLength(const char* str, int length){
   Serial.write(str, actualLength);
 }
 
-void drawStrWithMaxLength(int x, int y, const char* str, const int length){
+//uses u8g2.drawStr with explicitly passed coordinates
+void u8g2DrawStrWithMaxLength(int x, int y, const char* str, const int length){
   if (length >= DISPLAY_STR_BUFFER_SIZE) {
     u8g2.setCursor(x,y);
     u8g2.print("Err:len ");
@@ -242,5 +345,25 @@ void drawStrWithMaxLength(int x, int y, const char* str, const int length){
   char buf[DISPLAY_STR_BUFFER_SIZE];
   strlcpy(buf, str, length+1);
   u8g2.drawStr(x,y,buf);
+}
+
+//uses u8g2.print, pads excess allocated space with whitespace
+void u8g2PrintStrWithMaxLength(const char* str, const int length){
+  if (length >= DISPLAY_STR_BUFFER_SIZE) {
+    u8g2.print("Err:len ");
+    u8g2.print(length);
+    u8g2.print(" exceeds BUF_SIZE");
+    return;
+  }
+  //populate buffer
+  char buf[DISPLAY_STR_BUFFER_SIZE];
+  strlcpy(buf, str, length+1);
+  int strLen = strlen(buf);
+  // If the string is shorter than the specified length, pad it with spaces
+  if (strLen < length) {
+      memset(buf + strLen, ' ', length - strLen); // Fill with spaces
+      buf[length] = '\0'; // Null-terminate the string
+  }
+  u8g2.print(buf);
 }
 
