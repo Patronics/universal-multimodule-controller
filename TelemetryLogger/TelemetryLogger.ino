@@ -194,11 +194,13 @@ void printMultiModuleStatus(MultiModuleStatus status){
   // ---- parse channel order byte: CH4|CH3|CH2|CH1 with CHx value A=0,E=1,T=2,R=3  ----
   Serial.print("Protocol Name: ");
   printStringWithMaxLength(status.protocol_name, sizeof(status.protocol_name));
+  u8g2.drawStr(0,5,"protocol: ");
+  drawStrWithMaxLength(50,5, status.protocol_name, sizeof(status.protocol_name));
 
-  u8g2.drawStr(0,10,"Protocol: ");
-  writeStringToDispWithMaxLength(status.protocol_name, sizeof(status.protocol_name), 10,25);
   Serial.print("\nSub-Protocol Name: ");
   printStringWithMaxLength(status.sub_protocol_name, sizeof(status.sub_protocol_name));
+  u8g2.drawStr(0,12,"subprotocol:");
+  drawStrWithMaxLength(50,12, status.sub_protocol_name, sizeof(status.sub_protocol_name));
   // ---- Option text and number of sub protocols ----
   Serial.print("\nOption text type: ");  //todo: evaluate option text
   Serial.println(status.option_text_and_num_sub_protocols.parts.option_text);
@@ -221,7 +223,7 @@ void printStringWithMaxLength(const char* str, int length){
   }
 }
 
-void writeStringToDispWithMaxLength(const char* str, int length, int x, int y){
+void drawStrWithMaxLength(int x, int y, const char* str, int length){
   char buf[2];
   buf[1] = 0; //terminating null
   for(int i=0; i<length; i++){
