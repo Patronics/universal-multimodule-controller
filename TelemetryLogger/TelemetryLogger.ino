@@ -31,6 +31,7 @@ const int DISPLAY_STR_BUFFER_SIZE = 32;
 const int CHAR_WIDTH = 4;
 
 unsigned long lastTelemetryMillis = 0;
+unsigned long lastLoopMillis = 0;
 
 //setup i2c display
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
@@ -58,10 +59,10 @@ char capturedData[MAX_TELEM_DATA_BYTES + 1]; // Pre-allocated buffer, +1 for nul
 MultiModuleStatus moduleStatus;
 
 MultiProtocolStream streamOut;
+uint8_t streamOutAdditionalProtocolDataLen = 0;
 
 
 
-// the setup routine runs once when you press reset:
 void setup() {
 
   //bounce2 setup
@@ -110,31 +111,24 @@ void setup() {
   //initialize stream values
   //start setting up output data structures
   streamOut.header.reserved_bits=0b010101;
-  streamOut.header.is_failsafe=0;
-  setProtocolMode(streamOut, 28, 0); //a single protocol hardcoded for now, 28=AFHDS2A, 0=PWM_IBUS
+  streamOut.header.is_failsafe = 0;
+  setProtocolMode(&streamOut, 28, 0); //a single protocol hardcoded for now, 28=AFHDS2A, 0=PWM_IBUS
+  streamOut.rx_num_power_type.rxNum = 0;
+  streamOut.rx_num_power_type.power = 0; //high power
+  streamOut.option_protocol = -128; //unknown purpose, matching example from transmitter for now
+  streamOut.extended_protocol.telemetry_Invert = 1;
   //TODO init remaining configuration flags for streamOut
 
   while (!Serial) {
     ; // wait for USB serial port to connect
   }
   Serial.println("start telemetry log.");
-  
+  Serial.print("output struct:");
+  printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
 
 }
 
-/*note that protocol and subProtocol names are inconsistient in documentation, and thus some of the struct names may be confusing.
-In the multi-module docs,
-protocolNum is sometimes referred to as "subProtocol" but other times as "protocol"
-and subprotocolNum is sometimes referred to as "type" but other times as "subProtocol"
-*/
-void setProtocolMode(MultiProtocolStream s, uint8_t protocolNum, uint8_t subprotocolNum){
-  s.sub_protocol_flags.sub_protocol = protocolNum & 0x1F; //bits 0-4
-  s.header.sub_protocol_range = (protocolNum >> 5) & 0x01; //bit 5
-  s.extended_protocol.sub_protocol = (protocolNum >> 6) & 0x03; //bits 6-7
-  s.rx_num_power_type.type = subprotocolNum & 0x07; //type is 3 bits total
-}
 
-// the loop routine runs over and over again forever:
 void loop() {
   // Update each button's state
   okButton.update();
@@ -144,42 +138,48 @@ void loop() {
   leftButton.update();
   rightButton.update();
 
-    if (okButton.pressed()) {
+    /*if (okButton.pressed()) {
         Serial.println("OK Button Pressed!");
     }
-
     if (backButton.pressed()) {
         Serial.println("Back Button Pressed!");
     }
-
     if (upButton.pressed()) {
         Serial.println("Up Button Pressed!");
     }
-
     if (downButton.pressed()) {
         Serial.println("Down Button Pressed!");
     }
-
     if (leftButton.pressed()) {
         Serial.println("Left Button Pressed!");
     }
-
     if (rightButton.pressed()) {
         Serial.println("Right Button Pressed!");
-    }
+    }*/
 
 
   getTelemetry();
   if(Serial.available()){ //commands from computer
 
   }
-  //Serial.println("looping");
-  //delay(1);  // delay in between reads for stability
-  u8g2.sendBuffer();
+
+
+  //Serial.print("loop time: ");
+  //Serial.println(millis()-lastLoopMillis);
+  lastLoopMillis = millis();
 }
 
-int getComputerCommand(){
-  return 0;
+
+/*note that protocol and subProtocol names are inconsistient in documentation, and thus some of the struct names may be confusing.
+In the multi-module docs,
+protocolNum is sometimes referred to as "subProtocol" but other times as "protocol"
+and subprotocolNum is sometimes referred to as "type" but other times as "subProtocol"
+*/
+void setProtocolMode(MultiProtocolStream *s, uint8_t protocolNum, uint8_t subprotocolNum){
+  s->sub_protocol_flags.sub_protocol = protocolNum & 0x1F; //bits 0-4
+  s->header.sub_protocol_range_inv = ((protocolNum >> 5) ^ 0x01) & 0x01; //inverted bit 5
+  s->extended_protocol.sub_protocol = (protocolNum >> 6) & 0x03; //bits 6-7
+  s->rx_num_power_type.type = subprotocolNum & 0x07; //type is 3 bits total
 }
 
 int getTelemetry(){
@@ -208,10 +208,14 @@ int getTelemetry(){
           Serial.println("Invalid data length!");
           return -1; // return error status
         }
+
+        /*u8g2.setCursor(55, 55);     //log time between telemetry updates
+        u8g2.print(millis()-lastTelemetryMillis);
+        u8g2.print("   ");*/
         lastTelemetryMillis = millis();
         delay(5); //give data time to populate
         if (SerialModule.available() < dataLength) {
-          Serial.println("Not enough data available!"); //note: if this occurs often, add a 10 microsecond delay
+          Serial.println("Not enough data available!"); //note: if this occurs often, increase the delay
           Serial.print("expected ");
           Serial.print(dataLength);
           Serial.print(" bytes but only ");
@@ -239,6 +243,8 @@ int getTelemetry(){
         } else {
           Serial.print("unknown telemetry type");
         }
+        //update i2c display
+        u8g2.sendBuffer();
       }
     }
   }
@@ -250,6 +256,11 @@ int getTelemetry(){
     Serial.println(bytesInBuffer);
   }
   return 0;
+}
+
+void printStructWithLenAsHex(void* ptr, size_t length){
+  char* charArray = (char*)ptr;  // Typecast to char pointer
+  printBytesAsHex(charArray, length);
 }
 
 void printBytesAsHex(const char* data, int length) {
@@ -318,7 +329,7 @@ void printMultiModuleStatus(MultiModuleStatus status){
   Serial.print("Prev, Next protocol #");
   Serial.print(status.prev_protocol);
   Serial.print(",");
-  Serial.print(status.next_protocol);
+  Serial.println(status.next_protocol);
 }
 
 //print strings that may not be null-terminated if they reach max length

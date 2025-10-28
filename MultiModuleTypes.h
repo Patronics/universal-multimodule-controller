@@ -15,7 +15,7 @@
 #define HEADER_CONSTANT_BITS 0b01010100 // 0b010101: Constant bits for header configuration,
 typedef union {  //valid values range 0x54-0x57
     struct {
-        uint8_t sub_protocol_range : 1; // Bit 0: bit 5 of subprotocol, 0 for values 0..31, 1 for values 32..63
+        uint8_t sub_protocol_range_inv : 1; // Bit 0: inverted bit 5 of subprotocol, 1 for values 0..31, 0 for values 32..63
         uint8_t is_failsafe : 1;        // Bit 1: 0 for channel mode, 1 for failsafe
         uint8_t reserved_bits : 6;      // Bits 2-7: must be 0b010101 for use with multi-module
     };
@@ -63,6 +63,8 @@ typedef struct __attribute__((packed)) {
     ExtendedProtocolData extended_protocol;    // Stream[26]: Extended Protocol data
     uint8_t additional_data[MAX_ADD_DATA_BYTES]; // Stream[27..35]: Additional protocol data (optional)
 } MultiProtocolStream;
+
+
 
 typedef union {
     uint8_t value; // Access the entire byte
