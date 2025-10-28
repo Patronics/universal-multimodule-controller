@@ -25,6 +25,9 @@ This script reads telemetry data from a 4-in-one multimodule.
 
 const unsigned long SERIAL_MODULE_BAUD_RATE = 100000;
 
+const int DISPLAY_STR_BUFFER_SIZE = 32;
+const int CHAR_WIDTH = 4;
+
 
 //setup i2c display
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
@@ -104,7 +107,7 @@ int getTelemetry(){
         char type = SerialModule.read();
         char length = SerialModule.read();
         // Convert length byte to an integer for data capture
-        int dataLength = (int)length;
+        uint8_t dataLength = (uint8_t)length;
         Serial.print("type:");
         Serial.println((int)type);
         Serial.print("length:");
@@ -136,6 +139,9 @@ int getTelemetry(){
           Serial.println("Flysky AFHDS2 telemetry data found"); //Flysky AFHDS2 telemetry type 0xAA
           Serial.print("RSSI: ");
           Serial.println((int)capturedData[0]);
+          u8g2.drawStr(84, 5, "RSSI:");
+          u8g2.setCursor(104, 5);
+          u8g2.print((int)capturedData[0]);
           //TODO: parse the rest of this telemetry
         } else {
           Serial.print("unknown telemetry type");
@@ -143,6 +149,7 @@ int getTelemetry(){
       }
     }
   }
+  u8g2.sendBuffer();
   return 0;
 }
 
@@ -210,28 +217,30 @@ void printMultiModuleStatus(MultiModuleStatus status){
   Serial.print(status.prev_protocol);
   Serial.print(",");
   Serial.print(status.next_protocol);
-  u8g2.sendBuffer();
 }
 
 //print strings that may not be null-terminated if they reach max length
 void printStringWithMaxLength(const char* str, int length){
+  int actualLength = 0;
   for(int i=0; i<length; i++){
     if (str[i] == '\0') {
       break; // Stop if a null byte is encountered
     }
-    Serial.write(str[i]);
+    actualLength++;
   }
+  Serial.write(str, actualLength);
 }
 
-void drawStrWithMaxLength(int x, int y, const char* str, int length){
-  char buf[2];
-  buf[1] = 0; //terminating null
-  for(int i=0; i<length; i++){
-    if (str[i] == '\0') {
-      break; // Stop if a null byte is encountered
-    }
-    buf[0] = str[i];
-    u8g2.drawStr(x+(4*i),y,buf);
+void drawStrWithMaxLength(int x, int y, const char* str, const int length){
+  if (length >= DISPLAY_STR_BUFFER_SIZE) {
+    u8g2.setCursor(x,y);
+    u8g2.print("Err:len ");
+    u8g2.print(length);
+    u8g2.print(" exceeds BUF_SIZE");
+    return;
   }
+  char buf[DISPLAY_STR_BUFFER_SIZE];
+  strlcpy(buf, str, length+1);
+  u8g2.drawStr(x,y,buf);
 }
 
