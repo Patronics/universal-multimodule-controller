@@ -36,8 +36,10 @@ unsigned long lastLoopMillis = 0;
 unsigned long lastTxMillis = 0;
 
 const unsigned long msBetweenTxUpdates = 7; 
-
-int currentMenu = 0;
+//for picking a menu
+int selectedMenu = 0;
+//the currently open menu, or -1 for none
+int currentMenu = -1;
 
 //setup i2c display
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
@@ -144,7 +146,7 @@ void setup() {
   Serial.println("start telemetry log.");
   Serial.print("output struct:");
   printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
-  redrawMenu(0);
+  redrawMenu(0, -1);
 }
 
 
@@ -166,21 +168,17 @@ void loop() {
   }
   if (upButton.pressed()) {
     currentNavButton = UP_BUTTON;
-    Serial.println("Up Button Pressed!");
   }
   if (downButton.pressed()) {
     currentNavButton = DOWN_BUTTON;
-    Serial.println("Down Button Pressed!");
   }
   if (leftButton.pressed()) {
     currentNavButton = LEFT_BUTTON;
-    Serial.println("Left Button Pressed!");
   }
   if (rightButton.pressed()) {
     currentNavButton = RIGHT_BUTTON;
-    Serial.println("Right Button Pressed!");
   }
-  if(currentNavButton){
+  if(currentNavButton){   //NO_BUTTON_PRESSED is falsy
     handleNavButton(currentNavButton);
   }
 
@@ -205,51 +203,66 @@ void transmit(MultiProtocolStream* s, uint8_t aditional_bytes){
   SerialModule.write(byteArray, (sizeof(MultiProtocolStream)-(9-aditional_bytes)));
 }
 
-void drawMenuItem(int x, int y, const char* label, bool selected) {
-  u8g2.setCursor(x, y);
-  if (selected) {
+void drawMenuItem(const char* label, int thisPageIndex, int selectedMenu, int currentMenu) {
+  //starting coordinates and movement pattern for menu items
+  const int xOffset[] = {0, 64};
+  const int yOffsetStart = 25;
+  const int ySpacing = 6;
+
+  u8g2.setCursor(xOffset[thisPageIndex % 2], (yOffsetStart + (thisPageIndex/2)*ySpacing));
+  if (thisPageIndex == currentMenu){
+    u8g2.setDrawColor(0);
+  }
+  if (thisPageIndex == selectedMenu) {
     u8g2.print("> "); // Add a marker for the selected item
   } else {
     u8g2.print("  "); // No marker for unselected items
   }
   u8g2.print(label); // Print the label of the menu item
+  u8g2.setDrawColor(1);
 }
 
-void redrawMenu(int selectedMenuItem){
-  drawMenuItem(0,  25, "Protocol", selectedMenuItem==0);
-  drawMenuItem(64, 25, "Sub-protocol", selectedMenuItem==1);
-  drawMenuItem(0,  30, "Recv number", selectedMenuItem==2);
-  drawMenuItem(64, 30, "Optn-protocol", selectedMenuItem==3);
-  drawMenuItem(0,  35, "Channel Map", selectedMenuItem==4);
-  drawMenuItem(64, 35, "Channel Range", selectedMenuItem==5);
-  drawMenuItem(0,  40, "Values", selectedMenuItem==6);
-  drawMenuItem(64, 40, "Failsafe Value", selectedMenuItem==7);
+void redrawMenu(int selectedMenuItem, int activeMenuItem) {
+  int menuNumber = 0;
+  drawMenuItem("Protocol", menuNumber++, selectedMenuItem, activeMenuItem);
+  drawMenuItem("Sub-protocol", menuNumber++, selectedMenuItem, activeMenuItem);
+  drawMenuItem("TX Active", menuNumber++, selectedMenuItem, activeMenuItem);
+  drawMenuItem("Recv number", menuNumber++, selectedMenuItem, activeMenuItem);
+  //drawMenuItem("Optn-protocol", menuNumber++, selectedMenuItem, activeMenuItem);
+  drawMenuItem("Channel Map", menuNumber++, selectedMenuItem, activeMenuItem);
+  drawMenuItem("Channel Range", menuNumber++, selectedMenuItem, activeMenuItem);
+  drawMenuItem("Values", menuNumber++, selectedMenuItem, activeMenuItem);
+  drawMenuItem("Failsafe Value", menuNumber++, selectedMenuItem, activeMenuItem);
+  u8g2.drawHLine(3, 44, 128);
 }
 
 void handleNavButton(NavButton btn){
   Serial.println(btn);
-  if(btn == UP_BUTTON){
-    currentMenu -= 2;
-    if(currentMenu < 0){
-      currentMenu = 0;
-    }
-  } else if(btn == DOWN_BUTTON){
-    currentMenu += 2;
-  } else if(btn == LEFT_BUTTON){
-    currentMenu -= 1;
-  } else if(btn == RIGHT_BUTTON){
-    currentMenu += 1;
-  } else if(btn == OK_BUTTON){
-    transmitActive = true;
-    u8g2.drawStr(55, 55, "tx   active");
-    Serial.println("OK Button Pressed!");
-  } else if (btn == BACK_BUTTON){
-      Serial.println("Back Button Pressed!");
-      u8g2.drawStr(55, 55, "tx inactive");
-      transmitActive = false;
+  if (btn == BACK_BUTTON){
+    currentMenu = -1;
   }
-
-  redrawMenu(currentMenu);
+  if(currentMenu == -1){
+    if(btn == UP_BUTTON){
+      selectedMenu -= 2;
+    } else if(btn == DOWN_BUTTON){
+      selectedMenu += 2;
+    } else if(btn == LEFT_BUTTON){
+      selectedMenu -= 1;
+    } else if(btn == RIGHT_BUTTON){
+      selectedMenu += 1;
+    } else if(btn == OK_BUTTON){
+      currentMenu = selectedMenu;
+      transmitActive = true;
+      u8g2.drawStr(55, 55, "tx   active");
+    }
+    if(selectedMenu < 0){
+      selectedMenu = 0;
+    }
+  } else {
+    //todo: handle individual menus
+  }
+  
+  redrawMenu(selectedMenu, currentMenu);
   u8g2.sendBuffer();
 }
 
