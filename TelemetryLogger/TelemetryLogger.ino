@@ -30,8 +30,13 @@ const int SERIAL_MODULE_BUFFER_SIZE = 128;
 const int DISPLAY_STR_BUFFER_SIZE = 32;
 const int CHAR_WIDTH = 4;
 
+
+
 unsigned long lastTelemetryMillis = 0;
 unsigned long lastLoopMillis = 0;
+unsigned long lastTxMillis = 0;
+
+const unsigned long msBetweenTxUpdates = 7; 
 
 //setup i2c display
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
@@ -60,6 +65,9 @@ MultiModuleStatus moduleStatus;
 
 MultiProtocolStream streamOut;
 uint8_t streamOutAdditionalProtocolDataLen = 0;
+
+bool transmitActive = false;
+bool haveTelemetry = false;
 
 
 
@@ -119,9 +127,9 @@ void setup() {
   streamOut.extended_protocol.telemetry_Invert = 1;
   //TODO init remaining configuration flags for streamOut
 
-  while (!Serial) {
+  /*while (!Serial) {
     ; // wait for USB serial port to connect
-  }
+  }*/
   Serial.println("start telemetry log.");
   Serial.print("output struct:");
   printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
@@ -138,11 +146,17 @@ void loop() {
   leftButton.update();
   rightButton.update();
 
-    /*if (okButton.pressed()) {
+    if (okButton.pressed()) {
         Serial.println("OK Button Pressed!");
+        transmitActive = true;
+        u8g2.drawStr(55, 55, "tx   active");
+        u8g2.sendBuffer();
     }
     if (backButton.pressed()) {
         Serial.println("Back Button Pressed!");
+        u8g2.drawStr(55, 55, "tx inactive");
+        u8g2.sendBuffer();
+        transmitActive = false;
     }
     if (upButton.pressed()) {
         Serial.println("Up Button Pressed!");
@@ -155,7 +169,7 @@ void loop() {
     }
     if (rightButton.pressed()) {
         Serial.println("Right Button Pressed!");
-    }*/
+    }
 
 
   getTelemetry();
@@ -163,11 +177,22 @@ void loop() {
 
   }
 
+  if(transmitActive && millis() - lastTxMillis >= msBetweenTxUpdates){
+    lastTxMillis = millis();
+    transmit(&streamOut, streamOutAdditionalProtocolDataLen);
+
+  }
 
   //Serial.print("loop time: ");
   //Serial.println(millis()-lastLoopMillis);
   lastLoopMillis = millis();
 }
+
+void transmit(MultiProtocolStream* s, uint8_t aditional_bytes){
+  uint8_t* byteArray = (uint8_t*)s;
+  SerialModule.write(byteArray, (sizeof(MultiProtocolStream)-(9-aditional_bytes)));
+}
+
 
 
 /*note that protocol and subProtocol names are inconsistient in documentation, and thus some of the struct names may be confusing.
@@ -187,14 +212,18 @@ int getTelemetry(){
   u8g2.setCursor(0,5);
   if(millis() < 15000 && lastTelemetryMillis == 0){
     u8g2.print("waiting for telemetry...");
-  } else if (millis() - lastTelemetryMillis > 15000) {
+    u8g2.sendBuffer();
+    haveTelemetry=false;
+  } else if (haveTelemetry==true && millis() - lastTelemetryMillis > 15000) {
     u8g2.print("no telemetry available...");
+    u8g2.sendBuffer();
+    haveTelemetry=false;
   }
   if (SerialModule.available() >= 4){
-    //Serial.println("4 bytes");
+    //look for start of data header
     if (SerialModule.read() == 'M'){
       if(SerialModule.read() == 'P'){
-
+        haveTelemetry = true;
         Serial.println("found valid header!");
         char type = SerialModule.read();
         char length = SerialModule.read();

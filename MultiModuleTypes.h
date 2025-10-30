@@ -111,9 +111,9 @@ typedef struct __attribute__((packed)) {
     ChannelOrder channel_order;                 // Channel order
     uint8_t next_protocol;                      // Next valid protocol
     uint8_t prev_protocol;                      // Previous valid protocol
-    char protocol_name[7];                       // Protocol name (null-terminated if len<7)
+    char protocol_name[7];                      // Protocol name (null-terminated if len<7)
     OptionTextAndNumSubProtocols option_text_and_num_sub_protocols;  // Option text (e.g. OPTION_NONE, OPTION_OPTION) (high 4 bits);    // Number of sub protocols (low 4 bits)
-    char sub_protocol_name[8];                       // Sub protocol names (null-terminated if len<8)
+    char sub_protocol_name[8];                  // Sub protocol names (null-terminated if len<8)
 } MultiModuleStatus;
 
 #define MULTI_MODULE_STATUS_TYPE 1
