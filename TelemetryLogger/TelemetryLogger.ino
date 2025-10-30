@@ -27,8 +27,12 @@ This script reads telemetry data from a 4-in-one multimodule.
 const unsigned long SERIAL_MODULE_BAUD_RATE = 100000;
 const int SERIAL_MODULE_BUFFER_SIZE = 128;
 
-const int DISPLAY_STR_BUFFER_SIZE = 32;
+const int DISPLAY_PIXEL_WIDTH = 128;
+const int DISPLAY_PIXEL_HEIGHT = 64;
+
 const int CHAR_WIDTH = 4;
+const int CHAR_HEIGHT = 6;
+const int DISPLAY_STR_BUFFER_SIZE = DISPLAY_PIXEL_WIDTH/CHAR_WIDTH;
 
 
 unsigned long lastTelemetryMillis = 0;
@@ -36,10 +40,7 @@ unsigned long lastLoopMillis = 0;
 unsigned long lastTxMillis = 0;
 
 const unsigned long msBetweenTxUpdates = 7; 
-//for picking a menu
-int selectedMenu = 0;
-//the currently open menu, or -1 for none
-int currentMenu = -1;
+
 
 //setup i2c display
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
@@ -71,6 +72,25 @@ enum NavButton {
   RIGHT_BUTTON
 };
 
+//for picking a menu
+int selectedMenu = 0;
+//the currently open menu, or -1 for none
+int currentMenu = -1;
+
+//a function pointer for handling a given menu item
+typedef void (*MenuItemHandlerPtr)(int index, NavButton btnPressed);
+
+const int MENU_ITEM_LABEL_SIZE = (DISPLAY_STR_BUFFER_SIZE/2)+1-2;  //calculated as half of the display width, -2 chars of spacing, +1 char for terminating null
+const int MENU_ITEM_COUNT = 8; //number of menu items, adjust as needed
+
+//TODO: make menuitem struct that holds name, indexnum, and function to call for interactions to that menu. Populate it in setup, then iterate through for redrawMenu()
+typedef struct {
+  char label[MENU_ITEM_LABEL_SIZE];
+  MenuItemHandlerPtr buttonHandler;
+  int index;  //index number in menu
+} menuItem;
+
+menuItem menuItems[MENU_ITEM_COUNT];
 
 //data structures for status and output
 char capturedData[MAX_TELEM_DATA_BYTES + 1]; // Pre-allocated buffer, +1 for null-terminator
@@ -79,9 +99,13 @@ MultiModuleStatus moduleStatus;
 MultiProtocolStream streamOut;
 uint8_t streamOutAdditionalProtocolDataLen = 0;
 
+uint8_t currentActiveProtocol = 0;
+uint8_t currentActiveSubProtocol = 0;
+
 bool transmitActive = false;
 bool haveTelemetry = false;
 
+void unimplementedMenuItemHandler(int index, NavButton btnPressed);
 
 
 void setup() {
@@ -133,7 +157,7 @@ void setup() {
   //start setting up output data structures
   streamOut.header.reserved_bits=0b010101;
   streamOut.header.is_failsafe = 0;
-  setProtocolMode(&streamOut, 28, 0); //a single protocol hardcoded for now, 28=AFHDS2A, 0=PWM_IBUS
+  setProtocolMode(&streamOut, 28, 0); //default protocol, 28=AFHDS2A, 0=PWM_IBUS
   streamOut.rx_num_power_type.rxNum = 0;
   streamOut.rx_num_power_type.power = 0; //high power
   streamOut.option_protocol = -128; //unknown purpose, matching example from transmitter for now
@@ -146,6 +170,46 @@ void setup() {
   Serial.println("start telemetry log.");
   Serial.print("output struct:");
   printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
+
+  int menuNumber = 0;
+
+  strlcpy(menuItems[menuNumber].label, "Protocol", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = protocolSelectMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "Sub-protocol", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = subProtocolSelectMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "TX Active", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = activateTxMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "Recv number", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber++;
+
+  // strlcpy(menuItems[menuNumber].label, "Optn-protocol", MENU_ITEM_LABEL_SIZE);
+  // menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  // menuItems[menuNumber].index = menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "Channel Map", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "Channel Range", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "Values", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "Failsafe Value", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber++;
+
+
   redrawMenu(0, -1);
 }
 
@@ -201,13 +265,14 @@ void loop() {
 void transmit(MultiProtocolStream* s, uint8_t aditional_bytes){
   uint8_t* byteArray = (uint8_t*)s;
   SerialModule.write(byteArray, (sizeof(MultiProtocolStream)-(9-aditional_bytes)));
+  //printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
 }
 
 void drawMenuItem(const char* label, int thisPageIndex, int selectedMenu, int currentMenu) {
   //starting coordinates and movement pattern for menu items
   const int xOffset[] = {0, 64};
   const int yOffsetStart = 25;
-  const int ySpacing = 6;
+  const int ySpacing = CHAR_HEIGHT;
 
   u8g2.setCursor(xOffset[thisPageIndex % 2], (yOffsetStart + (thisPageIndex/2)*ySpacing));
   if (thisPageIndex == currentMenu){
@@ -220,27 +285,18 @@ void drawMenuItem(const char* label, int thisPageIndex, int selectedMenu, int cu
   }
   u8g2.print(label); // Print the label of the menu item
   u8g2.setDrawColor(1);
-}
+};
 
 void redrawMenu(int selectedMenuItem, int activeMenuItem) {
   int menuNumber = 0;
-  drawMenuItem("Protocol", menuNumber++, selectedMenuItem, activeMenuItem);
-  drawMenuItem("Sub-protocol", menuNumber++, selectedMenuItem, activeMenuItem);
-  drawMenuItem("TX Active", menuNumber++, selectedMenuItem, activeMenuItem);
-  drawMenuItem("Recv number", menuNumber++, selectedMenuItem, activeMenuItem);
-  //drawMenuItem("Optn-protocol", menuNumber++, selectedMenuItem, activeMenuItem);
-  drawMenuItem("Channel Map", menuNumber++, selectedMenuItem, activeMenuItem);
-  drawMenuItem("Channel Range", menuNumber++, selectedMenuItem, activeMenuItem);
-  drawMenuItem("Values", menuNumber++, selectedMenuItem, activeMenuItem);
-  drawMenuItem("Failsafe Value", menuNumber++, selectedMenuItem, activeMenuItem);
-  u8g2.drawHLine(3, 44, 128);
+  for(int menuNumber = 0; menuNumber < MENU_ITEM_COUNT; menuNumber++){
+    drawMenuItem(menuItems[menuNumber].label, menuNumber, selectedMenuItem, activeMenuItem);
+  }
+  u8g2.drawHLine(3, 44, DISPLAY_PIXEL_WIDTH);
 }
 
 void handleNavButton(NavButton btn){
   Serial.println(btn);
-  if (btn == BACK_BUTTON){
-    currentMenu = -1;
-  }
   if(currentMenu == -1){
     if(btn == UP_BUTTON){
       selectedMenu -= 2;
@@ -252,18 +308,150 @@ void handleNavButton(NavButton btn){
       selectedMenu += 1;
     } else if(btn == OK_BUTTON){
       currentMenu = selectedMenu;
-      transmitActive = true;
-      u8g2.drawStr(55, 55, "tx   active");
     }
     if(selectedMenu < 0){
       selectedMenu = 0;
     }
-  } else {
-    //todo: handle individual menus
+  }
+  //when menu is active, pass input to it;
+  if (currentMenu >= 0) {
+    menuItems[currentMenu].buttonHandler(currentMenu, btn);
+  }
+  //exit to main menu after allowing menu item function to perform cleanup as needed
+  if (btn == BACK_BUTTON){
+    currentMenu = -1;
   }
   
   redrawMenu(selectedMenu, currentMenu);
   u8g2.sendBuffer();
+}
+
+void clearMenuContents(){
+    u8g2.setColorIndex(0); //erase
+    u8g2.drawBox(0, 45, 128, 19);
+    u8g2.setColorIndex(1); //erase
+}
+
+
+// ------- menu item handlers ------
+void unimplementedMenuItemHandler(int index, NavButton btnPressed){
+  if (btnPressed == BACK_BUTTON){ //cleanup
+    clearMenuContents();
+    return;
+  }
+  u8g2.setCursor(0, 50);
+  u8g2.print("unimplemented menu item: ");
+  u8g2.print(index);
+  u8g2.setCursor(0,56);
+  u8g2.print(menuItems[index].label);
+    u8g2.setCursor(0,62);
+  u8g2.print("button pressed: ");
+  u8g2.print(btnPressed);
+}
+
+void activateTxMenuItemHandler(int index, NavButton btnPressed){
+  bool updated=false;
+  if(btnPressed == LEFT_BUTTON){
+    transmitActive = true;
+    updated=true;
+  } else if(btnPressed == RIGHT_BUTTON){
+    transmitActive = false;
+    updated=true;
+  }
+  if(updated || btnPressed == OK_BUTTON){
+    u8g2.setCursor(0,50);
+    if(transmitActive){
+      u8g2.print("TX active  ");
+    } else {
+      u8g2.print("TX inactive");
+    }
+    u8g2.setCursor(0,56);
+    u8g2.print("left: activate");
+    u8g2.setCursor(DISPLAY_PIXEL_WIDTH/2,56);
+    u8g2.print("right: disable");
+    u8g2.setCursor(0,62);
+    u8g2.print("Press back to return to menu");
+  } else if (btnPressed == BACK_BUTTON){
+    clearMenuContents();
+  }
+}
+
+void protocolSelectMenuItemHandler(int index, NavButton btnPressed){
+  bool updated=false;
+  if (btnPressed == LEFT_BUTTON){
+    updated=true;
+    setProtocolMode(&streamOut,moduleStatus.prev_protocol, 0);
+  }
+  else if (btnPressed == RIGHT_BUTTON){
+    updated=true;
+    setProtocolMode(&streamOut,moduleStatus.next_protocol, 0);
+  }
+  if(updated || btnPressed == OK_BUTTON){
+    u8g2.setCursor(0,50);
+    u8g2.setDrawColor(0); //hightlight currently selected value
+    u8g2.print("Current: ");
+    u8g2PrintStrWithMaxLength( moduleStatus.protocol_name, sizeof(moduleStatus.protocol_name));
+    u8g2.setDrawColor(1);
+    u8g2.setCursor(0, 56);
+    u8g2.print("Left: ");
+    u8g2.print(moduleStatus.prev_protocol);
+    u8g2.setCursor(DISPLAY_PIXEL_WIDTH/2, 56);
+    u8g2.print("Right: ");
+    u8g2.print(moduleStatus.next_protocol);
+    if(!transmitActive){
+      u8g2.setCursor(0,63);
+      u8g2.print("tip: enable tx to see data");
+    }
+  } else if (btnPressed == BACK_BUTTON){
+    clearMenuContents();
+  }
+}
+
+void subProtocolSelectMenuItemHandler(int index, NavButton btnPressed){
+  bool updated=false;
+  if (btnPressed == LEFT_BUTTON){
+    updated=true;
+    if(currentActiveSubProtocol > 0){
+      setProtocolMode(&streamOut, currentActiveProtocol,currentActiveSubProtocol-1);
+    }
+  }
+  else if (btnPressed == RIGHT_BUTTON){
+    updated=true;
+    if(currentActiveSubProtocol < moduleStatus.option_text_and_num_sub_protocols.parts.num_sub_protocols){
+      setProtocolMode(&streamOut, currentActiveProtocol,currentActiveSubProtocol+1);
+    }
+  }
+
+  if(updated || btnPressed == OK_BUTTON){
+    u8g2.setCursor(0,50);
+    u8g2.setDrawColor(0); //hightlight currently selected value
+    u8g2.print("Current: ");
+    u8g2PrintStrWithMaxLength( moduleStatus.sub_protocol_name, sizeof(moduleStatus.sub_protocol_name));
+    u8g2.setDrawColor(1);
+    u8g2.setCursor(0, 56);
+    u8g2.print("Left: ");
+    if(currentActiveSubProtocol > 0){
+      u8g2.print(currentActiveSubProtocol-1);
+      u8g2.print("   ");
+    } else {
+      u8g2.print("none");
+    }
+    u8g2.setCursor(DISPLAY_PIXEL_WIDTH/2, 56);
+    u8g2.print("Right: ");
+    if(currentActiveSubProtocol < moduleStatus.option_text_and_num_sub_protocols.parts.num_sub_protocols){
+      u8g2.print(currentActiveSubProtocol+1);
+      u8g2.print("   ");
+    } else {
+      u8g2.print("none");
+    }
+    if(!transmitActive){
+      u8g2.setCursor(0,63);
+      u8g2.print("tip: enable tx to see data");
+    }
+  } else if (btnPressed == BACK_BUTTON){
+    clearMenuContents();
+  }
+
 }
 
 
@@ -273,6 +461,8 @@ protocolNum is sometimes referred to as "subProtocol" but other times as "protoc
 and subprotocolNum is sometimes referred to as "type" but other times as "subProtocol"
 */
 void setProtocolMode(MultiProtocolStream *s, uint8_t protocolNum, uint8_t subprotocolNum){
+  currentActiveProtocol = protocolNum;
+  currentActiveSubProtocol = subprotocolNum;
   s->sub_protocol_flags.sub_protocol = protocolNum & 0x1F; //bits 0-4
   s->header.sub_protocol_range_inv = ((protocolNum >> 5) ^ 0x01) & 0x01; //inverted bit 5
   s->extended_protocol.sub_protocol = (protocolNum >> 6) & 0x03; //bits 6-7
