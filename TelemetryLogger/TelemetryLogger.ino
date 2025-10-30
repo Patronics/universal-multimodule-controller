@@ -185,8 +185,8 @@ void setup() {
   menuItems[menuNumber].buttonHandler = activateTxMenuItemHandler;
   menuItems[menuNumber].index = menuNumber++;
 
-  strlcpy(menuItems[menuNumber].label, "Recv number", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  strlcpy(menuItems[menuNumber].label, "Recv select", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = receiverSelectMenuItemHandler;
   menuItems[menuNumber].index = menuNumber++;
 
   // strlcpy(menuItems[menuNumber].label, "Optn-protocol", MENU_ITEM_LABEL_SIZE);
@@ -400,7 +400,7 @@ void protocolSelectMenuItemHandler(int index, NavButton btnPressed){
     u8g2.print(moduleStatus.next_protocol);
     if(!transmitActive){
       u8g2.setCursor(0,63);
-      u8g2.print("tip: enable tx to see data");
+      u8g2.print("tip: enable tx to see live data");
     }
   } else if (btnPressed == BACK_BUTTON){
     clearMenuContents();
@@ -421,7 +421,6 @@ void subProtocolSelectMenuItemHandler(int index, NavButton btnPressed){
       setProtocolMode(&streamOut, currentActiveProtocol,currentActiveSubProtocol+1);
     }
   }
-
   if(updated || btnPressed == OK_BUTTON){
     u8g2.setCursor(0,50);
     u8g2.setDrawColor(0); //hightlight currently selected value
@@ -446,14 +445,60 @@ void subProtocolSelectMenuItemHandler(int index, NavButton btnPressed){
     }
     if(!transmitActive){
       u8g2.setCursor(0,63);
-      u8g2.print("tip: enable tx to see data");
+      u8g2.print("tip: enable tx to see live data");
     }
   } else if (btnPressed == BACK_BUTTON){
     clearMenuContents();
   }
-
 }
 
+void receiverSelectMenuItemHandler(int index, NavButton btnPressed){
+  bool updated = false;
+  if (btnPressed == UP_BUTTON){
+    updated = true;
+    if(streamOut.rx_num_power_type.rxNum < 15){
+      streamOut.rx_num_power_type.rxNum += 1;
+    }
+  } else if (btnPressed == DOWN_BUTTON){
+    updated = true;
+    if(streamOut.rx_num_power_type.rxNum > 0){
+      streamOut.rx_num_power_type.rxNum -= 1;
+    }
+  } else if (btnPressed == LEFT_BUTTON){
+    updated = true;
+    streamOut.sub_protocol_flags.bindBit = ~streamOut.sub_protocol_flags.bindBit;
+  } else if (btnPressed == RIGHT_BUTTON){
+    updated = true;
+    streamOut.sub_protocol_flags.autoBindBit = ~streamOut.sub_protocol_flags.autoBindBit;
+  }
+  if (updated || btnPressed == OK_BUTTON){
+    u8g2.setCursor(0,50);
+    u8g2.print("receiver number:");
+    u8g2.setDrawColor(0);
+    u8g2.print(" ");
+    u8g2.print((int)streamOut.rx_num_power_type.rxNum, DEC);
+    u8g2.print(" ");
+    u8g2.setDrawColor(1);
+    u8g2.setCursor(0, 56);
+    u8g2.print("up/down: cycle receiver number");
+    u8g2.setCursor(0, 62);
+    u8g2.print("left: tgl ");
+    if(streamOut.sub_protocol_flags.bindBit){
+      u8g2.setDrawColor(0);
+    }
+    u8g2.print("bind");
+    u8g2.setDrawColor(1);
+    u8g2.print(", right: ");
+    if(streamOut.sub_protocol_flags.autoBindBit){
+      u8g2.setDrawColor(0);
+    }
+    u8g2.print("autobind");
+    u8g2.setDrawColor(1);
+  }
+  else if (btnPressed == BACK_BUTTON){
+    clearMenuContents();
+  }
+}
 
 /*note that protocol and subProtocol names are inconsistient in documentation, and thus some of the struct names may be confusing.
 In the multi-module docs,
