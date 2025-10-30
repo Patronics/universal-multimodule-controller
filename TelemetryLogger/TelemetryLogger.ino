@@ -31,12 +31,13 @@ const int DISPLAY_STR_BUFFER_SIZE = 32;
 const int CHAR_WIDTH = 4;
 
 
-
 unsigned long lastTelemetryMillis = 0;
 unsigned long lastLoopMillis = 0;
 unsigned long lastTxMillis = 0;
 
 const unsigned long msBetweenTxUpdates = 7; 
+
+int currentMenu = 0;
 
 //setup i2c display
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
@@ -57,6 +58,16 @@ Bounce2::Button upButton;
 Bounce2::Button downButton;
 Bounce2::Button leftButton;
 Bounce2::Button rightButton;
+
+enum NavButton {
+  NO_BUTTON_PRESSED,  //value corresponds to 0, so falsy
+  OK_BUTTON,          //value 1, etc.
+  BACK_BUTTON,
+  UP_BUTTON,
+  DOWN_BUTTON,
+  LEFT_BUTTON,
+  RIGHT_BUTTON
+};
 
 
 //data structures for status and output
@@ -133,7 +144,7 @@ void setup() {
   Serial.println("start telemetry log.");
   Serial.print("output struct:");
   printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
-
+  redrawMenu(0);
 }
 
 
@@ -146,36 +157,37 @@ void loop() {
   leftButton.update();
   rightButton.update();
 
-    if (okButton.pressed()) {
-        Serial.println("OK Button Pressed!");
-        transmitActive = true;
-        u8g2.drawStr(55, 55, "tx   active");
-        u8g2.sendBuffer();
-    }
-    if (backButton.pressed()) {
-        Serial.println("Back Button Pressed!");
-        u8g2.drawStr(55, 55, "tx inactive");
-        u8g2.sendBuffer();
-        transmitActive = false;
-    }
-    if (upButton.pressed()) {
-        Serial.println("Up Button Pressed!");
-    }
-    if (downButton.pressed()) {
-        Serial.println("Down Button Pressed!");
-    }
-    if (leftButton.pressed()) {
-        Serial.println("Left Button Pressed!");
-    }
-    if (rightButton.pressed()) {
-        Serial.println("Right Button Pressed!");
-    }
-
+  NavButton currentNavButton = NO_BUTTON_PRESSED;
+  if (okButton.pressed()) {
+    currentNavButton = OK_BUTTON;
+  }
+  if (backButton.pressed()) {
+    currentNavButton = BACK_BUTTON;
+  }
+  if (upButton.pressed()) {
+    currentNavButton = UP_BUTTON;
+    Serial.println("Up Button Pressed!");
+  }
+  if (downButton.pressed()) {
+    currentNavButton = DOWN_BUTTON;
+    Serial.println("Down Button Pressed!");
+  }
+  if (leftButton.pressed()) {
+    currentNavButton = LEFT_BUTTON;
+    Serial.println("Left Button Pressed!");
+  }
+  if (rightButton.pressed()) {
+    currentNavButton = RIGHT_BUTTON;
+    Serial.println("Right Button Pressed!");
+  }
+  if(currentNavButton){
+    handleNavButton(currentNavButton);
+  }
 
   getTelemetry();
-  if(Serial.available()){ //commands from computer
+  /*if(Serial.available()){ //commands from computer
 
-  }
+  }*/
 
   if(transmitActive && millis() - lastTxMillis >= msBetweenTxUpdates){
     lastTxMillis = millis();
@@ -193,6 +205,53 @@ void transmit(MultiProtocolStream* s, uint8_t aditional_bytes){
   SerialModule.write(byteArray, (sizeof(MultiProtocolStream)-(9-aditional_bytes)));
 }
 
+void drawMenuItem(int x, int y, const char* label, bool selected) {
+  u8g2.setCursor(x, y);
+  if (selected) {
+    u8g2.print("> "); // Add a marker for the selected item
+  } else {
+    u8g2.print("  "); // No marker for unselected items
+  }
+  u8g2.print(label); // Print the label of the menu item
+}
+
+void redrawMenu(int selectedMenuItem){
+  drawMenuItem(0,  25, "Protocol", selectedMenuItem==0);
+  drawMenuItem(64, 25, "Sub-protocol", selectedMenuItem==1);
+  drawMenuItem(0,  30, "Recv number", selectedMenuItem==2);
+  drawMenuItem(64, 30, "Optn-protocol", selectedMenuItem==3);
+  drawMenuItem(0,  35, "Channel Map", selectedMenuItem==4);
+  drawMenuItem(64, 35, "Channel Range", selectedMenuItem==5);
+  drawMenuItem(0,  40, "Values", selectedMenuItem==6);
+  drawMenuItem(64, 40, "Failsafe Value", selectedMenuItem==7);
+}
+
+void handleNavButton(NavButton btn){
+  Serial.println(btn);
+  if(btn == UP_BUTTON){
+    currentMenu -= 2;
+    if(currentMenu < 0){
+      currentMenu = 0;
+    }
+  } else if(btn == DOWN_BUTTON){
+    currentMenu += 2;
+  } else if(btn == LEFT_BUTTON){
+    currentMenu -= 1;
+  } else if(btn == RIGHT_BUTTON){
+    currentMenu += 1;
+  } else if(btn == OK_BUTTON){
+    transmitActive = true;
+    u8g2.drawStr(55, 55, "tx   active");
+    Serial.println("OK Button Pressed!");
+  } else if (btn == BACK_BUTTON){
+      Serial.println("Back Button Pressed!");
+      u8g2.drawStr(55, 55, "tx inactive");
+      transmitActive = false;
+  }
+
+  redrawMenu(currentMenu);
+  u8g2.sendBuffer();
+}
 
 
 /*note that protocol and subProtocol names are inconsistient in documentation, and thus some of the struct names may be confusing.
