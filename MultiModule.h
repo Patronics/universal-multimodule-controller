@@ -1,7 +1,7 @@
 #include <stdint.h>
 
-#ifndef MULTIMODULETYPES_H
-#define MULTIMODULETYPES_H
+#ifndef MULTIMODULE_H
+#define MULTIMODULE_H
 
 #define MAX_CHANNELS 16
 #define BITS_PER_CHANNEL 11
@@ -90,7 +90,7 @@ typedef union {
     } channels; // Access individual channels
 } ChannelOrder;
 
-const char* channelNames[] = {"A", "E", "T", "R"};
+extern const char* channelNames[];
 
 typedef union {
     uint8_t value; // Complete byte access
@@ -119,5 +119,8 @@ typedef struct __attribute__((packed)) {
 #define MULTI_MODULE_STATUS_TYPE 1
 
 #define FLYSKY_AFHDS2_TELEM_STATUS_TYPE 6
+
+void setProtocolModeBits(MultiProtocolStream *s, uint8_t protocolNum, uint8_t subprotocolNum);
+int setChannelValue(MultiProtocolStream *stream, int channel_index, uint16_t value);
 
 #endif

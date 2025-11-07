@@ -5,7 +5,8 @@ Runs on Raspberry Pi Pico or similar RP2040 family boards
 This script reads telemetry data from a 4-in-one multimodule.
 */
 
-#include "MultiModuleTypes.h"
+#include "MultiModule.h"
+#include "ChannelManager.h"
 
 #include <U8g2lib.h>
 #ifdef U8X8_HAVE_HW_SPI
@@ -40,6 +41,9 @@ unsigned long lastLoopMillis = 0;
 unsigned long lastTxMillis = 0;
 
 const unsigned long msBetweenTxUpdates = 7; 
+
+OutputChannelDescriptor outChannels[MAX_CHANNELS]; //declare 16 item OutputChannelDescriptor array
+InputDescriptorPool inChannelsPool;
 
 
 //setup i2c display
@@ -76,6 +80,8 @@ enum NavButton {
 int selectedMenu = 0;
 //the currently open menu, or -1 for none
 int currentMenu = -1;
+
+int menuSubpageIndex = 0;  //for arbitrary use by sub-menu logic, should be reset to zero on exit from submenu
 
 //a function pointer for handling a given menu item
 typedef void (*MenuItemHandlerPtr)(int index, NavButton btnPressed);
@@ -162,54 +168,38 @@ void setup() {
   streamOut.rx_num_power_type.power = 0; //high power
   streamOut.option_protocol = -128; //unknown purpose, matching example from transmitter for now
   streamOut.extended_protocol.telemetry_Invert = 1;
-  //TODO init remaining configuration flags for streamOut
 
-  /*while (!Serial) {
+  while (!Serial) {
     ; // wait for USB serial port to connect
-  }*/
+  }
+  /*setChannelValue(&streamOut, 0, 2047);
+  setChannelValue(&streamOut, 1, 0);
+  setChannelValue(&streamOut, 2, 1);
+  setChannelValue(&streamOut, 3, 0);
+  setChannelValue(&streamOut, 4, 3);
+  setChannelValue(&streamOut, 5, 0);
+  setChannelValue(&streamOut, 6, 7);
+  setChannelValue(&streamOut, 7, 0);
+  setChannelValue(&streamOut, 8, 15);
+  setChannelValue(&streamOut, 9, 0);
+  setChannelValue(&streamOut, 10, 31);
+  setChannelValue(&streamOut, 11, 0);
+  setChannelValue(&streamOut, 12, 63);
+  setChannelValue(&streamOut, 13, 0);
+  setChannelValue(&streamOut, 14, 127);
+  setChannelValue(&streamOut, 15, 0);*/
   Serial.println("start telemetry log.");
+
+  initDefaultInputDescriptors(&inChannelsPool);
+  initOutputAndDefaultInputChannelDescriptors(outChannels, &inChannelsPool, MAX_CHANNELS);
+  
+
+
   Serial.print("output struct:");
   printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
 
-  int menuNumber = 0;
 
-  strlcpy(menuItems[menuNumber].label, "Protocol", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = protocolSelectMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber++;
-
-  strlcpy(menuItems[menuNumber].label, "Sub-protocol", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = subProtocolSelectMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber++;
-
-  strlcpy(menuItems[menuNumber].label, "TX Active", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = activateTxMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber++;
-
-  strlcpy(menuItems[menuNumber].label, "Recv select", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = receiverSelectMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber++;
-
-  // strlcpy(menuItems[menuNumber].label, "Optn-protocol", MENU_ITEM_LABEL_SIZE);
-  // menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
-  // menuItems[menuNumber].index = menuNumber++;
-
-  strlcpy(menuItems[menuNumber].label, "Channel Map", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber++;
-
-  strlcpy(menuItems[menuNumber].label, "Channel Range", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber++;
-
-  strlcpy(menuItems[menuNumber].label, "Values", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber++;
-
-  strlcpy(menuItems[menuNumber].label, "Failsafe Value", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber++;
-
-
+  setupMenuLayout();
   redrawMenu(0, -1);
 }
 
@@ -254,7 +244,6 @@ void loop() {
   if(transmitActive && millis() - lastTxMillis >= msBetweenTxUpdates){
     lastTxMillis = millis();
     transmit(&streamOut, streamOutAdditionalProtocolDataLen);
-
   }
 
   //Serial.print("loop time: ");
@@ -265,7 +254,7 @@ void loop() {
 void transmit(MultiProtocolStream* s, uint8_t aditional_bytes){
   uint8_t* byteArray = (uint8_t*)s;
   SerialModule.write(byteArray, (sizeof(MultiProtocolStream)-(9-aditional_bytes)));
-  //printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
+  printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
 }
 
 void drawMenuItem(const char* label, int thisPageIndex, int selectedMenu, int currentMenu) {
@@ -276,7 +265,9 @@ void drawMenuItem(const char* label, int thisPageIndex, int selectedMenu, int cu
 
   u8g2.setCursor(xOffset[thisPageIndex % 2], (yOffsetStart + (thisPageIndex/2)*ySpacing));
   if (thisPageIndex == currentMenu){
-    u8g2.setDrawColor(0);
+    u8g2.setDrawColor(0);  //highlight currently active menu
+  } else {
+    u8g2.setDrawColor(1);
   }
   if (thisPageIndex == selectedMenu) {
     u8g2.print("> "); // Add a marker for the selected item
@@ -288,7 +279,6 @@ void drawMenuItem(const char* label, int thisPageIndex, int selectedMenu, int cu
 };
 
 void redrawMenu(int selectedMenuItem, int activeMenuItem) {
-  int menuNumber = 0;
   for(int menuNumber = 0; menuNumber < MENU_ITEM_COUNT; menuNumber++){
     drawMenuItem(menuItems[menuNumber].label, menuNumber, selectedMenuItem, activeMenuItem);
   }
@@ -330,6 +320,47 @@ void clearMenuContents(){
     u8g2.setColorIndex(0); //erase
     u8g2.drawBox(0, 45, 128, 19);
     u8g2.setColorIndex(1); //erase
+}
+
+void setupMenuLayout(){
+  int menuNumber = 0;
+  strlcpy(menuItems[menuNumber].label, "Protocol", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = protocolSelectMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "Sub-protocol", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = subProtocolSelectMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+  strlcpy(menuItems[menuNumber].label, "TX Active", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = activateTxMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+  strlcpy(menuItems[menuNumber].label, "Recv select", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = receiverSelectMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+  // strlcpy(menuItems[menuNumber].label, "Optn-protocol", MENU_ITEM_LABEL_SIZE);
+  // menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  // menuItems[menuNumber].index = menuNumber++;
+  //menuNumber++;
+  strlcpy(menuItems[menuNumber].label, "Channel Map", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = channelMapMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+  strlcpy(menuItems[menuNumber].label, "Channel Range", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+  strlcpy(menuItems[menuNumber].label, "Values", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+  strlcpy(menuItems[menuNumber].label, "Failsafe Value", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
 }
 
 
@@ -500,6 +531,74 @@ void receiverSelectMenuItemHandler(int index, NavButton btnPressed){
   }
 }
 
+void channelMapMenuItemHandler(int index, NavButton btnPressed){
+  bool updated = false;
+  int channelInputIndex = Pool_FindIndexByIdAndType(&inChannelsPool, outChannels[menuSubpageIndex].inputChannelDescriptor->id, outChannels[menuSubpageIndex].inputChannelDescriptor->inputFunctionType);
+  if (btnPressed == RIGHT_BUTTON){  //left/right changes mapped input for selected output
+    updated = true;
+    int nextIndex = Pool_FindNextUsedIndex(&inChannelsPool, channelInputIndex+1);
+    if(nextIndex != -1){
+      outChannels[menuSubpageIndex].inputChannelDescriptor = &(inChannelsPool.items[nextIndex]);
+    }
+  }
+  else if (btnPressed == LEFT_BUTTON){
+    updated = true;
+        updated = true;
+    int nextIndex = Pool_FindNextUsedIndex(&inChannelsPool, channelInputIndex-1);
+    if(nextIndex != -1){
+      outChannels[menuSubpageIndex].inputChannelDescriptor = &(inChannelsPool.items[nextIndex]);
+    }
+  }
+  else if (btnPressed == DOWN_BUTTON){  //up/down changes selected channel
+    updated = true;
+    menuSubpageIndex -= 1;
+    if (menuSubpageIndex<0){
+      menuSubpageIndex = 0;
+    }
+  }
+  else if (btnPressed == UP_BUTTON){
+    updated = true;
+    menuSubpageIndex += 1;
+    if (menuSubpageIndex>=MAX_CHANNELS){
+      menuSubpageIndex = MAX_CHANNELS-1;
+    }
+  }
+  if (updated || btnPressed == OK_BUTTON){
+    InputChannelDescriptor* currentInputDescriptor = outChannels[menuSubpageIndex].inputChannelDescriptor;
+    u8g2.setCursor(0,50);
+    u8g2.print("output ch");
+    u8g2.setDrawColor(0);
+    u8g2.print(" ");
+    u8g2.print(menuSubpageIndex, DEC);
+    u8g2.print(" ");
+    u8g2.setDrawColor(1);
+    u8g2.print(" \"");
+    u8g2.print(outChannels[menuSubpageIndex].name);
+    u8g2.print("\"                ");
+    u8g2.setCursor(0,56);
+    u8g2.print("value: '");
+    u8g2.print(currentInputDescriptor->getLatestInputData(currentInputDescriptor->context, currentInputDescriptor->id));
+    u8g2.print("' from:    ");
+    u8g2.setCursor(0,62);
+    u8g2.print("input ch");
+    u8g2.setDrawColor(0);
+    u8g2.print(" ");
+    u8g2.print(currentInputDescriptor->inputFunctionType, DEC);
+    u8g2.print("_");
+    u8g2.print(currentInputDescriptor->id, DEC);
+    u8g2.print(" ");
+    u8g2.setDrawColor(1);
+    u8g2.print(" \"");
+    u8g2.print(currentInputDescriptor->name);
+    u8g2.print("\"                ");
+
+  }
+  else if (btnPressed == BACK_BUTTON){
+    menuSubpageIndex=0;
+    clearMenuContents();
+  }
+}
+
 /*note that protocol and subProtocol names are inconsistient in documentation, and thus some of the struct names may be confusing.
 In the multi-module docs,
 protocolNum is sometimes referred to as "subProtocol" but other times as "protocol"
@@ -508,10 +607,7 @@ and subprotocolNum is sometimes referred to as "type" but other times as "subPro
 void setProtocolMode(MultiProtocolStream *s, uint8_t protocolNum, uint8_t subprotocolNum){
   currentActiveProtocol = protocolNum;
   currentActiveSubProtocol = subprotocolNum;
-  s->sub_protocol_flags.sub_protocol = protocolNum & 0x1F; //bits 0-4
-  s->header.sub_protocol_range_inv = ((protocolNum >> 5) ^ 0x01) & 0x01; //inverted bit 5
-  s->extended_protocol.sub_protocol = (protocolNum >> 6) & 0x03; //bits 6-7
-  s->rx_num_power_type.type = subprotocolNum & 0x07; //type is 3 bits total
+  setProtocolModeBits(s, protocolNum, subprotocolNum);
 }
 
 int getTelemetry(){
@@ -593,6 +689,7 @@ int getTelemetry(){
   }
   return 0;
 }
+
 
 void printStructWithLenAsHex(void* ptr, size_t length){
   char* charArray = (char*)ptr;  // Typecast to char pointer
