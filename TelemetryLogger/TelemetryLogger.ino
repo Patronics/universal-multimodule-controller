@@ -240,15 +240,53 @@ void loop() {
   /*if(Serial.available()){ //commands from computer
 
   }*/
-
   if(transmitActive && millis() - lastTxMillis >= msBetweenTxUpdates){
     lastTxMillis = millis();
+    updateChannelValues(&streamOut);
     transmit(&streamOut, streamOutAdditionalProtocolDataLen);
   }
 
   //Serial.print("loop time: ");
   //Serial.println(millis()-lastLoopMillis);
   lastLoopMillis = millis();
+}
+
+static int clamp(int v, int lo, int hi){
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+void updateChannelValues(MultiProtocolStream* s){
+  for(int i=0; i<MAX_CHANNELS; i++){
+    OutputChannelDescriptor* outChannel = &outChannels[i];
+    InputChannelDescriptor* inChannel = outChannel->inputChannelDescriptor;
+    int value = inChannel->getLatestInputData(inChannel->context, inChannel->id);
+    //scale values as needed
+    if(inChannel->minRange != outChannel->minRange || inChannel->maxRange != outChannel->maxRange){
+      int inMin = inChannel->minRange;
+      int inMax = inChannel->maxRange;
+      int outMin = outChannel->minRange;
+      int outMax = outChannel->maxRange;
+
+      // clamp input to its expected range
+      value = clamp(value, inMin, inMax);
+      // avoid division by zero if input range is empty
+      int inSpan = inMax - inMin;
+      if (inSpan == 0) {
+        // no span: map directly to outMin (or midpoint)
+        value = outMin;
+      } else {
+        // perform integer linear mapping: out = outMin + (value - inMin) * outSpan / inSpan
+        int outSpan = outMax - outMin;
+        value = outMin + (int)((long)(value - inMin) * outSpan / inSpan);
+      }
+    }
+    //Serial.print("setting value:");
+    //Serial.print(value);
+    setChannelValue(s, i, value);
+  }
+
 }
 
 void transmit(MultiProtocolStream* s, uint8_t aditional_bytes){

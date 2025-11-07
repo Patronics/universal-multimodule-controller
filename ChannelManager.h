@@ -3,8 +3,6 @@
 #ifndef CHANNEL_MANAGER_H
 #define CHANNEL_MANAGER_H
 
-typedef int (*GetChannelInputFn)(void* context, int id);
-
 //MAX_INPUTS > MAX_CHANNELS to allow for unused inputs from other input sources. 128 allows for USB keyboard, multiple controllers, etc
 #define MAX_INPUTS 128
 //15 characters plus null-termination
@@ -21,11 +19,14 @@ typedef enum {
     INPUT_FUNCTION_UNKNOWN,
 } InputFunctionType;
 
+//the input function to get updated data. If id is used when generating a value, any given function MUST only be used to handle a single type as defined by InputFunctionType
+typedef int (*GetChannelInputFn)(void* context, int id);
+
 typedef struct {
     GetChannelInputFn getLatestInputData; // Function pointer to retrieve latest input data, pass the ID as argument
     int id; // Unique ID number
-    InputFunctionType inputFunctionType;
-    void * context; //reserved for future use, allow passing additional context to the function
+    InputFunctionType inputFunctionType;  //type is used as a namespace for ID numbers, and to describe which operations are supported
+    void * context; //reserved to allow passing additional context to the function, with exact layout expected to be consistient within a given InputFunctionType
     int minRange; // Minimum range value
     int maxRange; // Maximum range value
     char name[INPUT_NAME_LEN]; //short, NULL-terminated ASCII name
@@ -38,6 +39,7 @@ typedef struct {
     int capacity;
     int count;
 } InputDescriptorPool;
+
 int Pool_FindIndexById(InputDescriptorPool *pool, int id);
 void Pool_Init(InputDescriptorPool *pool, const InputChannelDescriptor *prototype);
 void Pool_Release(InputDescriptorPool *pool, InputChannelDescriptor *desc);
