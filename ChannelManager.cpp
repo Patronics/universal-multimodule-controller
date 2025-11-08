@@ -1,11 +1,13 @@
 #include <stdint.h>
 #include <cstddef>
 #include <cstdio>
+#include <Arduino.h>
 
 #include "ChannelManager.h"
 
 // Interpret context as an integer value stored via an integer-sized pointer.
 // always returns the value specified by its context directly
+// compatible with INPUT_FUNCTION_CONST_FIXED and INPUT_FUNCTION_CONFIG_VALUE input types
 int fixedInputDataProducer(void* context, int id){
   intptr_t fixedValue = (intptr_t)context;
   (void)id; // id unused in this example, supress warning with no-op
@@ -19,6 +21,11 @@ int defaultInputDataProducer(void* context, int id){
   // Use intptr_t cast so we can pass an integer via the void* context parameter.
   const int midpoint = 1024;
   return fixedInputDataProducer((void *)(intptr_t)midpoint, id);
+}
+
+int analogReadDataProducer(void* context, int id){
+  intptr_t inputPin = (intptr_t)context;
+  return analogRead(inputPin);
 }
 
 const InputChannelDescriptor defaultInputDescriptor = {
@@ -104,6 +111,7 @@ int Pool_FindPreviousUsedIndex(InputDescriptorPool *pool, int index){
   return -1;
 }
 
+//defaults to INPUT_FUNCTION_CONST_FIXED, but also supports INPUT_FUNCTION_CONFIG_VALUE input type
 void AllocFixedValueInput(InputDescriptorPool *pool, char* name, int value){
   InputChannelDescriptor *newInput = Pool_Allocate(pool);
   newInput->minRange = 0;
@@ -115,11 +123,26 @@ void AllocFixedValueInput(InputDescriptorPool *pool, char* name, int value){
   newInput->context = (void *)(intptr_t)value;
 }
 
+//use with INPUT_FUNCTION_IO_ADC type only
+void AllocADCInput(InputDescriptorPool *pool, char* name, pin_size_t pin){
+  InputChannelDescriptor *newInput = Pool_Allocate(pool);
+  newInput->minRange = 0;
+  newInput->maxRange = 4095;
+  snprintf(newInput->name,INPUT_NAME_LEN, name);
+  newInput->inputFunctionType = INPUT_FUNCTION_IO_ADC;
+  newInput->getLatestInputData = analogReadDataProducer;
+  newInput->id = (int)pin;
+  newInput->context = (void *)(intptr_t)pin;
+}
+
 void initDefaultInputDescriptors(InputDescriptorPool *pool){
   Pool_Init(pool, &defaultInputDescriptor);
   AllocFixedValueInput(pool, "Zero (fixed)", 0);
   AllocFixedValueInput(pool, "Mid (fixed)", 1024);
   AllocFixedValueInput(pool, "Max (fixed)", 2047);
+  AllocADCInput(pool, "ADC0", A0);
+  AllocADCInput(pool, "ADC1", A1);
+  AllocADCInput(pool, "ADC2", A2);
 }
 
 void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelsPool, int numChannels){   
