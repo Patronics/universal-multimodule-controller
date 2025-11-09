@@ -4,6 +4,7 @@
 #include <Arduino.h>
 
 #include "ChannelManager.h"
+#include "MultiModule.h"
 
 // Interpret context as an integer value stored via an integer-sized pointer.
 // always returns the value specified by its context directly
@@ -111,28 +112,40 @@ int Pool_FindPreviousUsedIndex(InputDescriptorPool *pool, int index){
   return -1;
 }
 
-//defaults to INPUT_FUNCTION_CONST_FIXED, but also supports INPUT_FUNCTION_CONFIG_VALUE input type
-void AllocFixedValueInput(InputDescriptorPool *pool, char* name, int value){
+//defaults to INPUT_FUNCTION_CONST_FIXED
+InputChannelDescriptor *AllocFixedValueInput(InputDescriptorPool *pool, const char* name, int value){
   InputChannelDescriptor *newInput = Pool_Allocate(pool);
   newInput->minRange = 0;
   newInput->maxRange = 2047;
   snprintf(newInput->name,INPUT_NAME_LEN, name);
   newInput->inputFunctionType = INPUT_FUNCTION_CONST_FIXED;
   newInput->getLatestInputData = fixedInputDataProducer;
+  newInput->configureChannelInput = NULL;
   newInput->id = value;
   newInput->context = (void *)(intptr_t)value;
+  return newInput;
+}
+
+//for use with INPUT_FUNCTION_CONFIG_VALUE, extends AllocFixedValueInput to enable reconfiguration
+InputChannelDescriptor *AllocConfigValueInput(InputDescriptorPool *pool, const char* name, int value){
+  InputChannelDescriptor *newInput = AllocFixedValueInput(pool, name, value);
+  newInput->inputFunctionType = INPUT_FUNCTION_CONFIG_VALUE;
+  newInput->configureChannelInput = NULL;  //TODO: implement this configuration function
+  return newInput;
 }
 
 //use with INPUT_FUNCTION_IO_ADC type only
-void AllocADCInput(InputDescriptorPool *pool, char* name, pin_size_t pin){
+InputChannelDescriptor *AllocADCInput(InputDescriptorPool *pool, const char* name, pin_size_t pin){
   InputChannelDescriptor *newInput = Pool_Allocate(pool);
   newInput->minRange = 0;
   newInput->maxRange = 4095;
   snprintf(newInput->name,INPUT_NAME_LEN, name);
   newInput->inputFunctionType = INPUT_FUNCTION_IO_ADC;
   newInput->getLatestInputData = analogReadDataProducer;
+  newInput->configureChannelInput = NULL;
   newInput->id = (int)pin;
   newInput->context = (void *)(intptr_t)pin;
+  return newInput;
 }
 
 void initDefaultInputDescriptors(InputDescriptorPool *pool){
@@ -145,16 +158,19 @@ void initDefaultInputDescriptors(InputDescriptorPool *pool){
   AllocADCInput(pool, "ADC2", A2);
 }
 
-void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelsPool, int numChannels){   
+void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelsPool, int numChannels){
+  assert(numChannels >= 0 && numChannels < MAX_CHANNELS);
   for (int i=0; i < numChannels; i++){
     OutputChannelDescriptor *p = &outputChannels[i];  //get pointer to specific output channel
-    p->inputChannelDescriptor = Pool_Allocate(inputChannelsPool);
+    char buf[INPUT_NAME_LEN];
+    snprintf(buf, INPUT_NAME_LEN, "default (%d)", i);
+    p->inputChannelDescriptor = AllocConfigValueInput(inputChannelsPool, buf, 1024);
     p->minRange = 0;
     p->maxRange = 2047;
     p->outputChannelNumber = i;
     p->inputChannelDescriptor->id=i;
     p->inputChannelDescriptor->inputFunctionType = INPUT_FUNCTION_CONFIG_VALUE;
-    snprintf(p->inputChannelDescriptor->name, INPUT_NAME_LEN, "default (%d)", i);
-    snprintf(p->name, INPUT_NAME_LEN, "channel %d", i);
+    //snprintf(p->inputChannelDescriptor->name, INPUT_NAME_LEN, "default (%d)", i);
+    snprintf(p->name, OUTPUT_NAME_LEN, "channel %d", i);
   }
 }
