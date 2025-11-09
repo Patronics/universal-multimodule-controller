@@ -160,7 +160,7 @@ void initDefaultInputDescriptors(InputDescriptorPool *pool){
 }
 
 void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelsPool, int numChannels){
-  assert(numChannels >= 0 && numChannels < MAX_CHANNELS);
+  assert(numChannels >= 0 && numChannels <= MAX_CHANNELS);
   for (int i=0; i < numChannels; i++){
     OutputChannelDescriptor *p = &outputChannels[i];  //get pointer to specific output channel
     char buf[INPUT_NAME_LEN];
