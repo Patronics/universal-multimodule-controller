@@ -31,6 +31,7 @@ int analogReadDataProducer(void* context, int id){
 
 const InputChannelDescriptor defaultInputDescriptor = {
     .getLatestInputData = defaultInputDataProducer,
+    .configureChannelInput = NULL,
     .id = -1,
     .context = NULL,
     .minRange = 0,
