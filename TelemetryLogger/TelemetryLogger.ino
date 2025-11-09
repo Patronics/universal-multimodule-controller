@@ -7,6 +7,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 
 #include "MultiModule.h"
 #include "ChannelManager.h"
+#include "UI.h"
 
 #include <U8g2lib.h>
 #ifdef U8X8_HAVE_HW_SPI
@@ -27,13 +28,6 @@ This script reads telemetry data from a 4-in-one multimodule.
 
 const unsigned long SERIAL_MODULE_BAUD_RATE = 100000;
 const int SERIAL_MODULE_BUFFER_SIZE = 128;
-
-const int DISPLAY_PIXEL_WIDTH = 128;
-const int DISPLAY_PIXEL_HEIGHT = 64;
-
-const int CHAR_WIDTH = 4;
-const int CHAR_HEIGHT = 6;
-const int DISPLAY_STR_BUFFER_SIZE = DISPLAY_PIXEL_WIDTH/CHAR_WIDTH;
 
 
 unsigned long lastTelemetryMillis = 0;
@@ -66,16 +60,6 @@ Bounce2::Button downButton;
 Bounce2::Button leftButton;
 Bounce2::Button rightButton;
 
-enum NavButton {
-  NO_BUTTON_PRESSED,  //value corresponds to 0, so falsy
-  OK_BUTTON,          //value 1, etc.
-  BACK_BUTTON,
-  UP_BUTTON,
-  DOWN_BUTTON,
-  LEFT_BUTTON,
-  RIGHT_BUTTON
-};
-
 //for picking a menu
 int selectedMenu = 0;
 //the currently open menu, or -1 for none
@@ -83,18 +67,6 @@ int currentMenu = -1;
 
 int menuSubpageIndex = 0;  //for arbitrary use by sub-menu logic, should be reset to zero on exit from submenu
 
-//a function pointer for handling a given menu item
-typedef void (*MenuItemHandlerPtr)(int index, NavButton btnPressed);
-
-const int MENU_ITEM_LABEL_SIZE = (DISPLAY_STR_BUFFER_SIZE/2)+1-2;  //calculated as half of the display width, -2 chars of spacing, +1 char for terminating null
-const int MENU_ITEM_COUNT = 8; //number of menu items, adjust as needed
-
-//TODO: make menuitem struct that holds name, indexnum, and function to call for interactions to that menu. Populate it in setup, then iterate through for redrawMenu()
-typedef struct {
-  char label[MENU_ITEM_LABEL_SIZE];
-  MenuItemHandlerPtr buttonHandler;
-  int index;  //index number in menu
-} menuItem;
 
 menuItem menuItems[MENU_ITEM_COUNT];
 
@@ -403,6 +375,7 @@ void setupMenuLayout(){
 
 
 // ------- menu item handlers ------
+//TODO: adjust menuItemHandlers to use a context pointer instead of the global menuSubpageIndex for tracking more flexible context
 void unimplementedMenuItemHandler(int index, NavButton btnPressed){
   if (btnPressed == BACK_BUTTON){ //cleanup
     clearMenuContents();
