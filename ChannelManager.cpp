@@ -31,6 +31,7 @@ int analogReadDataProducer(void* context, int id){
 
 const InputChannelDescriptor defaultInputDescriptor = {
     .getLatestInputData = defaultInputDataProducer,
+    .configureChannelInput = NULL,
     .id = -1,
     .context = NULL,
     .minRange = 0,
@@ -158,15 +159,16 @@ void initDefaultInputDescriptors(InputDescriptorPool *pool){
 }
 
 void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelsPool, int numChannels){
+  assert(numChannels >= 0 && numChannels <= MAX_CHANNELS);
   for (int i=0; i < numChannels; i++){
     OutputChannelDescriptor *p = &outputChannels[i];  //get pointer to specific output channel
-    p->inputChannelDescriptor = Pool_Allocate(inputChannelsPool);
+    char buf[INPUT_NAME_LEN];
+    snprintf(buf, INPUT_NAME_LEN, "default (%d)", i);
+    p->inputChannelDescriptor = AllocConfigValueInput(inputChannelsPool, buf, 1024);
     p->minRange = 0;
     p->maxRange = 2047;
     p->outputChannelNumber = i;
     p->inputChannelDescriptor->id=i;
-    p->inputChannelDescriptor->inputFunctionType = INPUT_FUNCTION_CONFIG_VALUE;
-    snprintf(p->inputChannelDescriptor->name, INPUT_NAME_LEN, "default (%d)", i);
-    snprintf(p->name, INPUT_NAME_LEN, "channel %d", i);
+    snprintf(p->name, OUTPUT_NAME_LEN, "channel %d", i);
   }
 }
