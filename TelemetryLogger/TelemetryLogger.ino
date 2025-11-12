@@ -574,6 +574,14 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
       menuSubpageIndex = MAX_CHANNELS-1;
     }
   }
+  //note: currently menu renderers are not called during NO_BUTTON_PRESSED states, so the following logic would never run. If revised to run intermittently, this allows smoother refresh
+  /*else if (btnPressed == NO_BUTTON_PRESSED){  //no complete refresh needed, but live value may have changed, so redraw that portion
+    InputChannelDescriptor* currentInputDescriptor = outChannels[menuSubpageIndex].inputChannelDescriptor;
+    u8g2.setCursor(0,56);
+    u8g2.print("value: '");
+    u8g2.print(currentInputDescriptor->getLatestInputData(currentInputDescriptor->context, currentInputDescriptor->id));
+    u8g2.print("' from:    ");
+  }*/
   if (updated || btnPressed == OK_BUTTON){
     InputChannelDescriptor* currentInputDescriptor = outChannels[menuSubpageIndex].inputChannelDescriptor;
     u8g2.setCursor(0,50);

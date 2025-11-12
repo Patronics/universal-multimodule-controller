@@ -138,7 +138,7 @@ InputChannelDescriptor *AllocConfigValueInput(InputDescriptorPool *pool, const c
 InputChannelDescriptor *AllocADCInput(InputDescriptorPool *pool, const char* name, pin_size_t pin){
   InputChannelDescriptor *newInput = Pool_Allocate(pool);
   newInput->minRange = 0;
-  newInput->maxRange = 4095;
+  newInput->maxRange = 1023;
   snprintf(newInput->name,INPUT_NAME_LEN, name);
   newInput->inputFunctionType = INPUT_FUNCTION_IO_ADC;
   newInput->getLatestInputData = analogReadDataProducer;
@@ -159,6 +159,10 @@ void initDefaultInputDescriptors(InputDescriptorPool *pool){
 }
 
 void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelsPool, int numChannels){
+  if(numChannels < 0 || numChannels > MAX_CHANNELS){
+    Serial.print("numChannels out of range, skipping.");
+    return;
+  }
   assert(numChannels >= 0 && numChannels <= MAX_CHANNELS);
   for (int i=0; i < numChannels; i++){
     OutputChannelDescriptor *p = &outputChannels[i];  //get pointer to specific output channel
