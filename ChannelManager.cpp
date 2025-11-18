@@ -29,15 +29,31 @@ int analogReadDataProducer(void* context, int id){
   return analogRead(inputPin);
 }
 
+int USBKeyboardNumberDataProducer(void* context, int id){
+  USBKeyboardContextType *usbKeyboardContext = (USBKeyboardContextType *) context;
+  return usbKeyboardContext->latestValue;
+}
+
+
 const InputChannelDescriptor defaultInputDescriptor = {
     .getLatestInputData = defaultInputDataProducer,
     .configureChannelInput = NULL,
+    .cleanupInputContextFn = NULL,
     .id = -1,
     .context = NULL,
     .minRange = 0,
     .maxRange = 2047,
     .name = ""
 };
+
+////// cleanup for input context, when needed
+//when only freeing a malloc() is needed:
+void SimpleFreeInputContext(void *ptr, InputFunctionType _functionType){
+  if(ptr != NULL){
+  free(ptr);
+  }
+}
+
 
 /////  ------ input channel pool handling ------
 /* initialize input pool (copy prototype into every slot but mark unused) */
@@ -122,6 +138,7 @@ InputChannelDescriptor *AllocFixedValueInput(InputDescriptorPool *pool, const ch
   newInput->inputFunctionType = INPUT_FUNCTION_CONST_FIXED;
   newInput->getLatestInputData = fixedInputDataProducer;
   newInput->configureChannelInput = NULL;
+  newInput->cleanupInputContextFn = NULL;
   newInput->id = value;
   newInput->context = (void *)(intptr_t)value;
   return newInput;
@@ -132,6 +149,7 @@ InputChannelDescriptor *AllocConfigValueInput(InputDescriptorPool *pool, const c
   InputChannelDescriptor *newInput = AllocFixedValueInput(pool, name, value);
   newInput->inputFunctionType = INPUT_FUNCTION_CONFIG_VALUE;
   newInput->configureChannelInput = NULL;  //TODO: implement this configuration function
+  newInput->cleanupInputContextFn = NULL;
   return newInput;
 }
 //use with INPUT_FUNCTION_IO_ADC type only
@@ -143,6 +161,7 @@ InputChannelDescriptor *AllocADCInput(InputDescriptorPool *pool, const char* nam
   newInput->inputFunctionType = INPUT_FUNCTION_IO_ADC;
   newInput->getLatestInputData = analogReadDataProducer;
   newInput->configureChannelInput = NULL;
+  newInput->cleanupInputContextFn = NULL;
   newInput->id = (int)pin;
   newInput->context = (void *)(intptr_t)pin;
   return newInput;
@@ -174,5 +193,53 @@ void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *output
     p->outputChannelNumber = i;
     p->inputChannelDescriptor->id=i;
     snprintf(p->name, OUTPUT_NAME_LEN, "channel %d", i);
+  }
+}
+
+InputChannelDescriptor *AllocateUSBKeyboardNumberInputChannel(InputDescriptorPool *pool, int id, const char* name, USBInputDeviceDescriptor * descriptor) {
+  USBKeyboardContextType *newContext = (USBKeyboardContextType *)malloc(sizeof (USBKeyboardContextType));
+  InputChannelDescriptor *newInput = Pool_Allocate(pool);
+  newContext->parentDeviceDescriptor = descriptor;
+  newContext->latestValue = 0;
+  newContext->lastUpdateMillis = 0;
+  newInput->minRange = 0;
+  newInput->maxRange = 9;
+  snprintf(newInput->name,INPUT_NAME_LEN, name);
+  newInput->inputFunctionType = INPUT_FUNCTION_USB_KB_NUMBER;
+  newInput->getLatestInputData = USBKeyboardNumberDataProducer;
+  newInput->configureChannelInput = NULL;
+  newInput->cleanupInputContextFn = SimpleFreeInputContext;
+  newInput->id = id;
+  newInput->context = newContext;
+  descriptor->inputChannels[id] = newInput;
+  return newInput;
+}
+
+USBInputDeviceDescriptor* findUSBDescriptorByDevAddrAndInstance(USBInputDeviceDescriptor* arr, uint8_t dev_addr, uint8_t instance){
+  for (int i=0; i<MAX_USB_DEVICE_DESCRIPTORS; i++){
+    if(arr[i].dev_addr == dev_addr && arr[i].instance == instance){
+      return &arr[i];
+    }
+  }
+  return NULL;
+}
+
+int getFirstFreeUSBInputDescriptorIndex(USBInputDeviceDescriptor* arr){
+  for(int i=0; i<MAX_USB_DEVICE_DESCRIPTORS; i++){
+    if(arr[i].vid==0){ //no valid VID == 0;
+      return i;
+    }
+  }
+  return -1;
+}
+
+void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc){
+  for(int i=0; i < MAX_INPUT_CHANNELS_PER_USB_DEVICE; i++){
+    if(desc -> inputChannels[i] != NULL){
+      if (desc -> inputChannels[i] -> cleanupInputContextFn != NULL){
+        desc -> inputChannels[i] -> cleanupInputContextFn(desc -> inputChannels[i]->context, desc -> inputChannels[i]->inputFunctionType);
+      }
+      Pool_Release(pool, desc -> inputChannels[i]);
+    }
   }
 }

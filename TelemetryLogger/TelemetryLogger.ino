@@ -73,6 +73,9 @@ int menuSubpageIndex = 0;  //for arbitrary use by sub-menu logic, should be rese
 
 menuItem menuItems[MENU_ITEM_COUNT];
 
+USBInputDeviceDescriptor USBDeviceDescriptors[MAX_USB_DEVICE_DESCRIPTORS];
+uint8_t numberOfDeviceDescriptors = 0;
+
 //data structures for status and output
 char capturedData[MAX_TELEM_DATA_BYTES + 1]; // Pre-allocated buffer, +1 for null-terminator
 MultiModuleStatus moduleStatus;
@@ -183,7 +186,6 @@ void setup() {
 void setup1() {
   // configure pio-usb: defined in usbh_helper.h
   rp2040_configure_pio_usb();
-
   // run host stack on controller (rhport) 1
   // Note: For rp2040 pico-pio-usb, calling USBHost.begin() on core1 will have most of the
   // host bit-banging processing works done in core1 to free up core0 for other works
@@ -194,6 +196,7 @@ void loop1() {
   USBHost.task();
 }
 
+//core zero runs all non-usb tasks
 void loop() {
   // Update each button's state
   okButton.update();
@@ -854,6 +857,11 @@ void u8g2PrintStrWithMaxLength(const char* str, const int length){
 extern "C"
 {
 
+//NOTE: tuh_hid_mount_cb does not seem to be called when the USB device is connected before the host starts.
+//      with glow-clock derived proto-board, unplug USB device before starting host
+//TODO: provide USB power switching capability in dedicated hardware implementation, then adjust usbh_helper PIN_5V_EN define accordingly
+
+
 // Invoked when device with hid interface is mounted
 // Report descriptor is also available for use.
 // tuh_hid_parse_report_descriptor() can be used to parse common/simple enough
@@ -869,24 +877,77 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
   Serial.printf("VID = %04x, PID = %04x\r\n", vid, pid);
 
   uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
+
+  int thisDeviceIndex = getFirstFreeUSBInputDescriptorIndex(USBDeviceDescriptors);
+
+  if(thisDeviceIndex >= 0){
+    numberOfDeviceDescriptors++;
+    USBDeviceDescriptors[thisDeviceIndex].hidInterfaceType = itf_protocol; //may be overriden by further device idenficiation logic
+    USBDeviceDescriptors[thisDeviceIndex].vid = vid;
+    USBDeviceDescriptors[thisDeviceIndex].pid = pid;
+    USBDeviceDescriptors[thisDeviceIndex].dev_addr = dev_addr;
+    USBDeviceDescriptors[thisDeviceIndex].instance = instance;
+    USBDeviceDescriptors[thisDeviceIndex].deviceNum = thisDeviceIndex;
+    snprintf(USBDeviceDescriptors[thisDeviceIndex].name, INPUT_NAME_LEN, "usb dev #(%d)", thisDeviceIndex);
+  } else {
+    Serial.println("Error: max number of device descriptors exceeded!");
+    Serial.println("returning early from USB setup, may result in undefined behavior");
+    return;
+  }
+
   if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD) {
     Serial.printf("HID Keyboard\r\n");
     if (!tuh_hid_receive_report(dev_addr, instance)) {
       Serial.printf("Error: cannot request to receive report\r\n");
     }
+    //init keyboard number input channel:
+    AllocateUSBKeyboardNumberInputChannel(&inChannelsPool, 0, "USB KB number", &USBDeviceDescriptors[thisDeviceIndex]);
+
+  } else if (itf_protocol == HID_ITF_PROTOCOL_MOUSE) {
+    Serial.printf("HID Mouse\r\n");
+    if (!tuh_hid_receive_report(dev_addr, instance)) {
+      Serial.printf("Error: cannot request to receive report\r\n");
+    }
+  } else if (vid==0x054c && pid==0x09cc) {
+    Serial.printf("PS4 Dualshock gamepad\r\n");
+    USBDeviceDescriptors[thisDeviceIndex].hidInterfaceType = USB_DESCRIPTOR_PROTOCOL_GAMEPAD;
+    if (!tuh_hid_receive_report(dev_addr, instance)) {
+      Serial.printf("Error: cannot request to receive report\r\n");
+    }
+  } else {
+    Serial.print("unknown HID device:");
+    Serial.println(itf_protocol);
+
   }
 }
 
 // Invoked when device with hid interface is un-mounted
 void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
+  USBInputDeviceDescriptor* descriptor = findUSBDescriptorByDevAddrAndInstance(USBDeviceDescriptors, dev_addr, instance);
+  if(descriptor != NULL){
+    descriptor -> vid = 0; //mark this descriptor as unused
+    releaseUSBInputChannels(&inChannelsPool, descriptor);
+  } else {
+    Serial.print("Warning: unmounted device does not appear to have descriptor, check for erronious logic");
+  }
+  //TODO: free context for inputs if allocated
   Serial.printf("HID device address = %d, instance = %d is unmounted\r\n", dev_addr, instance);
 }
 
-void print_key(hid_keyboard_report_t const *original_report) {
-
+void handle_keyboard_key(uint8_t dev_addr, uint8_t instance, hid_keyboard_report_t const *original_report) {
+  USBInputDeviceDescriptor *descriptor = findUSBDescriptorByDevAddrAndInstance(USBDeviceDescriptors, dev_addr,instance);
+  USBKeyboardContextType *context = (USBKeyboardContextType *)descriptor->inputChannels[0]->context;
   // only remap if not empty report i.e key released
   for (uint8_t i = 0; i < 6; i++) {
     if (original_report->keycode[i] != 0) {
+      if(original_report->keycode[i] >= 30 && original_report->keycode[i] <=39){ //number keys on keyboard
+        Serial.print("found key!");
+        if(original_report->keycode[i] == 39){ //0 on keyboard
+          context->latestValue = 0;
+        } else {
+          context->latestValue = (original_report->keycode[i] - 29); //shift by 29 to properly align numerical values
+        }
+      }
       Serial.print(original_report->keycode[i]);
       break;
     }
@@ -899,7 +960,7 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
     Serial.printf("report len = %u NOT 8, probably something wrong !!\r\n", len);
   } else {
     //hid_keyboard_report_t remapped_report;
-    print_key((hid_keyboard_report_t const *) report);
+    handle_keyboard_key(dev_addr, instance, (hid_keyboard_report_t const *) report);
   }
 
   // continue to request to receive report
