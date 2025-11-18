@@ -9,6 +9,9 @@ This script reads telemetry data from a 4-in-one multimodule.
 #include "ChannelManager.h"
 #include "UI.h"
 
+// USBHost is defined in usbh_helper.h
+#include "usbh_helper.h"
+
 #include <U8g2lib.h>
 #ifdef U8X8_HAVE_HW_SPI
 #include <SPI.h>
@@ -130,7 +133,7 @@ void setup() {
   #endif
   SerialModule.setFIFOSize(SERIAL_MODULE_BUFFER_SIZE);
   SerialModule.begin(SERIAL_MODULE_BAUD_RATE, SERIAL_8E2);
-  Serial.begin(); //init USB serial
+  Serial.begin(115200); //init USB serial
   //initialize stream values
   //start setting up output data structures
   streamOut.header.reserved_bits=0b010101;
@@ -175,6 +178,21 @@ void setup() {
   redrawMenu(0, -1);
 }
 
+//core 1 is dedicated to USB host actions
+//------------- Core1 -------------//
+void setup1() {
+  // configure pio-usb: defined in usbh_helper.h
+  rp2040_configure_pio_usb();
+
+  // run host stack on controller (rhport) 1
+  // Note: For rp2040 pico-pio-usb, calling USBHost.begin() on core1 will have most of the
+  // host bit-banging processing works done in core1 to free up core0 for other works
+  USBHost.begin(1);
+}
+
+void loop1() {
+  USBHost.task();
+}
 
 void loop() {
   // Update each button's state
@@ -830,3 +848,64 @@ void u8g2PrintStrWithMaxLength(const char* str, const int length){
   u8g2.print(buf);
 }
 
+//--------------------------------------------------------------------+
+// TinyUSB Host callbacks
+//--------------------------------------------------------------------+
+extern "C"
+{
+
+// Invoked when device with hid interface is mounted
+// Report descriptor is also available for use.
+// tuh_hid_parse_report_descriptor() can be used to parse common/simple enough
+// descriptor. Note: if report descriptor length > CFG_TUH_ENUMERATION_BUFSIZE,
+// it will be skipped therefore report_desc = NULL, desc_len = 0
+void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_report, uint16_t desc_len) {
+  (void) desc_report;
+  (void) desc_len;
+  uint16_t vid, pid;
+  tuh_vid_pid_get(dev_addr, &vid, &pid);
+
+  Serial.printf("HID device address = %d, instance = %d is mounted\r\n", dev_addr, instance);
+  Serial.printf("VID = %04x, PID = %04x\r\n", vid, pid);
+
+  uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
+  if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD) {
+    Serial.printf("HID Keyboard\r\n");
+    if (!tuh_hid_receive_report(dev_addr, instance)) {
+      Serial.printf("Error: cannot request to receive report\r\n");
+    }
+  }
+}
+
+// Invoked when device with hid interface is un-mounted
+void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
+  Serial.printf("HID device address = %d, instance = %d is unmounted\r\n", dev_addr, instance);
+}
+
+void print_key(hid_keyboard_report_t const *original_report) {
+
+  // only remap if not empty report i.e key released
+  for (uint8_t i = 0; i < 6; i++) {
+    if (original_report->keycode[i] != 0) {
+      Serial.print(original_report->keycode[i]);
+      break;
+    }
+  }
+}
+
+// Invoked when received report from device via interrupt endpoint
+void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *report, uint16_t len) {
+  if (len != 8) {
+    Serial.printf("report len = %u NOT 8, probably something wrong !!\r\n", len);
+  } else {
+    //hid_keyboard_report_t remapped_report;
+    print_key((hid_keyboard_report_t const *) report);
+  }
+
+  // continue to request to receive report
+  if (!tuh_hid_receive_report(dev_addr, instance)) {
+    Serial.printf("Error: cannot request to receive report\r\n");
+  }
+}
+
+} //end extern "C" //end of tinyusb host callbacks
