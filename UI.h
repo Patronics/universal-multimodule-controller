@@ -1,4 +1,5 @@
-
+#include <cstddef>
+#include <stdint.h>
 
 #ifndef UI_H
 #define UI_H
@@ -34,5 +35,8 @@ typedef struct {
   MenuItemHandlerPtr buttonHandler;
   int index;  //index number in menu
 } menuItem;
+
+void printStructWithLenAsHex(void* ptr, size_t length);
+void printBytesAsHex(const char* data, int length);
 
 #endif

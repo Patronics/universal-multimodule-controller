@@ -15,6 +15,9 @@
 #define MAX_USB_DEVICE_DESCRIPTORS 8
 #define MAX_INPUT_CHANNELS_PER_USB_DEVICE 16
 
+//valid for USB FS only, USB 2 reports may be up to 512 bytes long
+#define HID_REPORT_BUFSIZE 64
+
 typedef enum {
     INPUT_FUNCTION_CONST_FIXED,   //hardcoded, nonconfigurable value
     INPUT_FUNCTION_CONFIG_VALUE,  //default value, but configurable
@@ -24,6 +27,7 @@ typedef enum {
     INPUT_FUNCTION_USB_SWITCH,    //boolean value from USB device switch  //todo implement/precisely define
     INPUT_FUNCTION_IR_SWITCH,     //boolean value from IR remote          //todo implement/precisely define
     INPUT_FUNCTION_USB_KB_NUMBER, //number 0-9 from USB keyboard
+    INPUT_FUNCTION_USB_GAMEPAD_STICK, //analog stick, or other 1-byte values in USB report array
     INPUT_FUNCTION_UNKNOWN,
 } InputFunctionType;
 
@@ -78,6 +82,7 @@ typedef struct {
     uint16_t vid, pid;
     uint8_t dev_addr, instance; //note: device may have multiple instances, in which case each will have a distinct USBInputDeviceDescriptor
     char name[INPUT_NAME_LEN];
+    uint8_t latest_report[HID_REPORT_BUFSIZE];
     uint8_t deviceNum;          //descriptor number within USBDeviceDescriptors (max of MAX_USB_DEVICE_DESCRIPTORS)
     InputChannelDescriptor *inputChannels[MAX_INPUT_CHANNELS_PER_USB_DEVICE]; //array of pointers to inputs owned by this USB device
 } USBInputDeviceDescriptor;
@@ -87,6 +92,11 @@ typedef struct {
     int latestValue;
     unsigned long lastUpdateMillis;
 } USBKeyboardContextType;
+
+typedef struct {
+    USBInputDeviceDescriptor *parentDeviceDescriptor;
+    unsigned long lastUpdateMillis;
+} USBGamepadContextType;
 
 int Pool_FindIndexById(InputDescriptorPool *pool, int id);
 void Pool_Init(InputDescriptorPool *pool, const InputChannelDescriptor *prototype);
@@ -105,6 +115,7 @@ int getFirstFreeUSBInputDescriptorIndex(USBInputDeviceDescriptor* arr);
 void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc);
 USBInputDeviceDescriptor* findUSBDescriptorByDevAddrAndInstance(USBInputDeviceDescriptor* arr, uint8_t dev_addr, uint8_t instance);
 InputChannelDescriptor *AllocateUSBKeyboardNumberInputChannel(InputDescriptorPool *pool, int id, const char* name, USBInputDeviceDescriptor * descriptor);
+USBGamepadContextType* AllocateUSBGamepadStickChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor * descriptor);
 
 
 

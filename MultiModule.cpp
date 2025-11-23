@@ -1,4 +1,6 @@
 #include "MultiModule.h"
+#include "UI.h"
+#include <stdint.h>
 
 /*note that protocol and subProtocol names are inconsistient in documentation, and thus some of the struct names may be confusing.
 In the multi-module docs,

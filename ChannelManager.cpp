@@ -34,6 +34,10 @@ int USBKeyboardNumberDataProducer(void* context, int id){
   return usbKeyboardContext->latestValue;
 }
 
+int USBGamepadAnalogDataProducer(void* context, int id){
+  USBGamepadContextType *usbGamepadContext = (USBGamepadContextType *) context;
+  return usbGamepadContext->parentDeviceDescriptor->latest_report[id];
+}
 
 const InputChannelDescriptor defaultInputDescriptor = {
     .getLatestInputData = defaultInputDataProducer,
@@ -213,6 +217,31 @@ InputChannelDescriptor *AllocateUSBKeyboardNumberInputChannel(InputDescriptorPoo
   newInput->context = newContext;
   descriptor->inputChannels[id] = newInput;
   return newInput;
+}
+
+InputChannelDescriptor *AllocateUSBGamepadStickInputChannel(InputDescriptorPool *pool, USBGamepadContextType *context, int id, const char* name, USBInputDeviceDescriptor * descriptor) {
+  InputChannelDescriptor *newInput = Pool_Allocate(pool);
+  context->parentDeviceDescriptor = descriptor;
+  context->lastUpdateMillis = 0;
+  newInput->minRange = 0x00;
+  newInput->maxRange = 0xff;
+  snprintf(newInput->name,INPUT_NAME_LEN, name);
+  newInput->inputFunctionType = INPUT_FUNCTION_USB_GAMEPAD_STICK;
+  newInput->getLatestInputData = USBGamepadAnalogDataProducer;
+  newInput->configureChannelInput = NULL;
+  newInput->cleanupInputContextFn = SimpleFreeInputContext;
+  newInput->id = id;
+  newInput->context = context;
+  return newInput;
+}
+
+USBGamepadContextType* AllocateUSBGamepadStickChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor * descriptor){
+    USBGamepadContextType *newContext = (USBGamepadContextType *)malloc(sizeof (USBGamepadContextType));
+    for(int i=0; i<6; i++){
+      const int stickIndexes[] = {1, 2, 3, 4, 8, 9};
+      descriptor->inputChannels[i] = AllocateUSBGamepadStickInputChannel(pool,newContext, stickIndexes[i], "USB Gamepad", descriptor);
+    }
+    return newContext;
 }
 
 USBInputDeviceDescriptor* findUSBDescriptorByDevAddrAndInstance(USBInputDeviceDescriptor* arr, uint8_t dev_addr, uint8_t instance){

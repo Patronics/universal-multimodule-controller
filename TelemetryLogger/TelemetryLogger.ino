@@ -731,23 +731,6 @@ int getTelemetry(){
 }
 
 
-void printStructWithLenAsHex(void* ptr, size_t length){
-  char* charArray = (char*)ptr;  // Typecast to char pointer
-  printBytesAsHex(charArray, length);
-}
-
-void printBytesAsHex(const char* data, int length) {
-    for (int i = 0; i < length; i++) {
-        // Print each byte as a two-digit hexadecimal value
-        if(data[i]<0x10){
-          Serial.print('0');
-        }
-        Serial.print(data[i], HEX); // Print in hex
-        Serial.print(" "); // Space for readability
-    }
-    Serial.println(); // New line at the end
-}
-
 void printMultiModuleStatus(MultiModuleStatus status){
   //----  Status flags ----
   Serial.println("Flags:");
@@ -914,6 +897,7 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
     if (!tuh_hid_receive_report(dev_addr, instance)) {
       Serial.printf("Error: cannot request to receive report\r\n");
     }
+    AllocateUSBGamepadStickChannels(&inChannelsPool, &USBDeviceDescriptors[thisDeviceIndex]);
   } else {
     Serial.print("unknown HID device:");
     Serial.println(itf_protocol);
@@ -954,14 +938,41 @@ void handle_keyboard_key(uint8_t dev_addr, uint8_t instance, hid_keyboard_report
   }
 }
 
+//report len always expected to be 64 bytes
+void handle_gamepad_input(USBInputDeviceDescriptor* thisDevice, uint8_t const *original_report, uint16_t len) {
+  if(len > HID_REPORT_BUFSIZE){
+    Serial.print("ERROR: invalid report length, truncating");
+    len = HID_REPORT_BUFSIZE;
+  }
+  if (!thisDevice || !original_report){
+    Serial.print("ERROR: device or original_report pointer is null");
+    return;
+  };
+  memcpy(thisDevice->latest_report, original_report, len);
+}
+
+
 // Invoked when received report from device via interrupt endpoint
 void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *report, uint16_t len) {
-  if (len != 8) {
-    Serial.printf("report len = %u NOT 8, probably something wrong !!\r\n", len);
-  } else {
-    //hid_keyboard_report_t remapped_report;
-    handle_keyboard_key(dev_addr, instance, (hid_keyboard_report_t const *) report);
+  USBInputDeviceDescriptor* thisDevice = findUSBDescriptorByDevAddrAndInstance(USBDeviceDescriptors, dev_addr, instance);
+  if (thisDevice -> hidInterfaceType == USB_DESCRIPTOR_PROTOCOL_KEYBOARD){
+    if (len != 8) {
+    Serial.printf("report len = %u NOT 8, not a keyboard!\r\n", len);
+    printBytesAsHex((char *)report, len);
+    } else {
+      //hid_keyboard_report_t remapped_report;
+      handle_keyboard_key(dev_addr, instance, (hid_keyboard_report_t const *) report);
+    }
+  } else if (thisDevice -> hidInterfaceType == USB_DESCRIPTOR_PROTOCOL_GAMEPAD){
+    Serial.print("report:");
+    printBytesAsHex((char *)report, len);
+    if(len!=64){
+      Serial.printf("report len = %u NOT 64, not a known gamepad!\r\n", len);
+    } else {
+      handle_gamepad_input(thisDevice, report, len);
+    }
   }
+
 
   // continue to request to receive report
   if (!tuh_hid_receive_report(dev_addr, instance)) {
