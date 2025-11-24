@@ -237,9 +237,11 @@ InputChannelDescriptor *AllocateUSBGamepadStickInputChannel(InputDescriptorPool 
 
 USBGamepadContextType* AllocateUSBGamepadStickChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor * descriptor){
     USBGamepadContextType *newContext = (USBGamepadContextType *)malloc(sizeof (USBGamepadContextType));
-    for(int i=0; i<6; i++){
-      const int stickIndexes[] = {1, 2, 3, 4, 8, 9};
-      descriptor->inputChannels[i] = AllocateUSBGamepadStickInputChannel(pool,newContext, stickIndexes[i], "USB Gamepad", descriptor);
+    for(int i=0; i<descriptor->layoutDef->analogInputCount; i++){
+      //const int stickIndexes[] = {1, 2, 3, 4, 8, 9}; //TODO: replace hardcoded indexes with values as configured by controller type in controllerData.cpp
+      char buf[INPUT_NAME_LEN];
+      snprintf(buf, INPUT_NAME_LEN, "%s-%s", descriptor->layoutDef->name, descriptor->layoutDef->analogInputNames[i]);
+      descriptor->inputChannels[i] = AllocateUSBGamepadStickInputChannel(pool,newContext, descriptor->layoutDef->analogInputReportOffsets[i], buf, descriptor);
     }
     return newContext;
 }

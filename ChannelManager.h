@@ -15,6 +15,8 @@
 #define MAX_USB_DEVICE_DESCRIPTORS 8
 #define MAX_INPUT_CHANNELS_PER_USB_DEVICE 16
 
+#define USB_INPUT_CHANNEL_NAME_LEN 4  //3 chars plus null, such as "Lx", "A", "Ch2", etc
+
 //valid for USB FS only, USB 2 reports may be up to 512 bytes long
 #define HID_REPORT_BUFSIZE 64
 
@@ -78,6 +80,19 @@ typedef enum
 }hid_interface_protocol_extended_enum_t;
 
 typedef struct {
+    char     name[INPUT_NAME_LEN-USB_INPUT_CHANNEL_NAME_LEN];
+    uint16_t vid, pid;
+    uint8_t  reportLength;
+    uint8_t  analogInputCount;
+    uint8_t  analogInputReportOffsets[MAX_INPUT_CHANNELS_PER_USB_DEVICE];  //what byte in the HID report corresponds to this input
+    char     analogInputNames[MAX_INPUT_CHANNELS_PER_USB_DEVICE][USB_INPUT_CHANNEL_NAME_LEN]; //array of names for channels
+    uint8_t  digitalInputCount;
+    uint8_t  digitalInputReportByteOffsets[MAX_INPUT_CHANNELS_PER_USB_DEVICE];  //what byte in the HID report contains this input
+    uint8_t  digitalInputReportBitMask[MAX_INPUT_CHANNELS_PER_USB_DEVICE];      //mask to filter which bit from above byte contains this input
+    char     digitalInputNames[MAX_INPUT_CHANNELS_PER_USB_DEVICE][USB_INPUT_CHANNEL_NAME_LEN];
+} USBGamepadLayoutDefinition;
+
+typedef struct {
     uint8_t hidInterfaceType;  //intended to match values in hid_interface_protocol_extended_enum_t
     uint16_t vid, pid;
     uint8_t dev_addr, instance; //note: device may have multiple instances, in which case each will have a distinct USBInputDeviceDescriptor
@@ -85,6 +100,7 @@ typedef struct {
     uint8_t latest_report[HID_REPORT_BUFSIZE];
     uint8_t deviceNum;          //descriptor number within USBDeviceDescriptors (max of MAX_USB_DEVICE_DESCRIPTORS)
     InputChannelDescriptor *inputChannels[MAX_INPUT_CHANNELS_PER_USB_DEVICE]; //array of pointers to inputs owned by this USB device
+    const USBGamepadLayoutDefinition *layoutDef; //pointer to the relevant layout definition
 } USBInputDeviceDescriptor;
 
 typedef struct {

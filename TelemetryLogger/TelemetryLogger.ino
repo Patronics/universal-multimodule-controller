@@ -8,6 +8,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 #include "MultiModule.h"
 #include "ChannelManager.h"
 #include "UI.h"
+#include "controllerData.h"
 
 // USBHost is defined in usbh_helper.h
 #include "usbh_helper.h"
@@ -90,6 +91,7 @@ bool transmitActive = false;
 bool haveTelemetry = false;
 
 void unimplementedMenuItemHandler(int index, NavButton btnPressed);
+
 
 
 void setup() {
@@ -891,9 +893,11 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
     if (!tuh_hid_receive_report(dev_addr, instance)) {
       Serial.printf("Error: cannot request to receive report\r\n");
     }
-  } else if (vid==0x054c && pid==0x09cc) {
-    Serial.printf("PS4 Dualshock gamepad\r\n");
+  } else if(const USBGamepadLayoutDefinition *thisControllerLayout = checkForKnownGamepadLayout(vid, pid); thisControllerLayout){
     USBDeviceDescriptors[thisDeviceIndex].hidInterfaceType = USB_DESCRIPTOR_PROTOCOL_GAMEPAD;
+    USBDeviceDescriptors[thisDeviceIndex].layoutDef = thisControllerLayout;
+    Serial.print("found known gamepad: ");
+    Serial.println(thisControllerLayout->name);
     if (!tuh_hid_receive_report(dev_addr, instance)) {
       Serial.printf("Error: cannot request to receive report\r\n");
     }
@@ -901,7 +905,6 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
   } else {
     Serial.print("unknown HID device:");
     Serial.println(itf_protocol);
-
   }
 }
 
@@ -966,8 +969,8 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
   } else if (thisDevice -> hidInterfaceType == USB_DESCRIPTOR_PROTOCOL_GAMEPAD){
     Serial.print("report:");
     printBytesAsHex((char *)report, len);
-    if(len!=64){
-      Serial.printf("report len = %u NOT 64, not a known gamepad!\r\n", len);
+    if(len!=thisDevice->layoutDef->reportLength){
+      Serial.printf("report len = %u NOT %u, not matching configured gamepad!\r\n", len, thisDevice->layoutDef->reportLength);
     } else {
       handle_gamepad_input(thisDevice, report, len);
     }
