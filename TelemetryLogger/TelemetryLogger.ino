@@ -149,9 +149,9 @@ void setup() {
   streamOut.option_protocol = -128; //unknown purpose, matching example from transmitter for now
   streamOut.extended_protocol.telemetry_Invert = 1;
 
-  while (!Serial) {
+ /* while (!Serial) {
     ; // wait for USB serial port to connect
-  }
+  }*/
   /*setChannelValue(&streamOut, 0, 2047);
   setChannelValue(&streamOut, 1, 0);
   setChannelValue(&streamOut, 2, 1);
