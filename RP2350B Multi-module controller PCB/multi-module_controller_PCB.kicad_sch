@@ -16312,15 +16312,6 @@
 				)
 			)
 		)
-		(property "LCSC" "C97521"
-			(at 60.96 90.805 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(pin "1"
 			(uuid "3d6b28b7-9ef5-491c-bd2e-e0b5d07b3404")
 		)
@@ -16602,15 +16593,6 @@
 				(font
 					(size 1.27 1.27)
 				)
-			)
-		)
-		(property "LCSC" "C157353"
-			(at 79.121 82.0166 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
 			)
 		)
 		(pin "1"
@@ -17069,15 +17051,6 @@
 				)
 			)
 		)
-		(property "LCSC" "C157353"
-			(at 255.651 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(pin "1"
 			(uuid "10504978-2ae4-4b75-b20f-30dc13378930")
 		)
@@ -17144,15 +17117,6 @@
 				(font
 					(size 1.27 1.27)
 				)
-			)
-		)
-		(property "LCSC" "C157353"
-			(at 267.081 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
 			)
 		)
 		(pin "1"
@@ -17223,15 +17187,6 @@
 				)
 			)
 		)
-		(property "LCSC" "C157353"
-			(at 278.511 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(pin "1"
 			(uuid "c8f3bad6-8352-4653-9de3-4c2be02cc87b")
 		)
@@ -17298,15 +17253,6 @@
 				(font
 					(size 1.27 1.27)
 				)
-			)
-		)
-		(property "LCSC" "C157353"
-			(at 289.941 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
 			)
 		)
 		(pin "1"
@@ -17377,15 +17323,6 @@
 				)
 			)
 		)
-		(property "LCSC" "C157353"
-			(at 301.371 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(pin "1"
 			(uuid "6195ca3c-f306-438a-bc57-aa1092e3e238")
 		)
@@ -17452,15 +17389,6 @@
 				(font
 					(size 1.27 1.27)
 				)
-			)
-		)
-		(property "LCSC" "C157353"
-			(at 312.801 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
 			)
 		)
 		(pin "1"
@@ -17775,15 +17703,6 @@
 				(font
 					(size 1.27 1.27)
 				)
-			)
-		)
-		(property "LCSC" "C88234"
-			(at 82.55 21.7932 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
 			)
 		)
 		(pin "1"
@@ -18315,15 +18234,6 @@
 				)
 			)
 		)
-		(property "LCSC" "C20625731"
-			(at 82.55 188.595 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(pin "1"
 			(uuid "19d3ff5a-5e6c-4d16-a6d0-aabd6dce3b3d")
 		)
@@ -18741,7 +18651,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(uuid "00000000-0000-0000-0000-00005f4b0bc9")
 		(property "Reference" "J3"
 			(at 391.16 83.82 0)
@@ -18957,7 +18867,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp no)
+		(dnp yes)
 		(uuid "00000000-0000-0000-0000-00005f4b4ce4")
 		(property "Reference" "J2"
 			(at 334.01 83.82 0)
@@ -19750,15 +19660,6 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C140782"
-			(at 56.1721 257.8741 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(pin "1"
 			(uuid "7726ec5c-bede-455a-af03-f3a671e1a367")
 		)
@@ -19825,15 +19726,6 @@
 				(font
 					(size 1.27 1.27)
 				)
-			)
-		)
-		(property "LCSC" "C157353"
-			(at 170.561 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
 			)
 		)
 		(pin "1"
@@ -20104,15 +19996,6 @@
 				)
 			)
 		)
-		(property "LCSC" "C157353"
-			(at 244.221 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(pin "1"
 			(uuid "0c47e95f-1cf6-4b63-9b33-51445a722bf7")
 		)
@@ -20176,15 +20059,6 @@
 		)
 		(property "Description" "Low-Power, Two-Port, High-Speed, USB2.0 (480Mbps) or UART Switch, MSOP-10"
 			(at 128.27 229.87 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C11355"
-			(at 130.4133 218.1055 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -20284,15 +20158,6 @@
 				)
 			)
 		)
-		(property "LCSC" "C157353"
-			(at 324.231 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(pin "1"
 			(uuid "5ae90d49-e3a3-43b8-b6ab-10ea5b172acb")
 		)
@@ -20355,15 +20220,6 @@
 		)
 		(property "Description" "Unpolarized capacitor, small symbol"
 			(at 52.07 261.62 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C157353"
-			(at 50.0761 257.6201 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -21500,7 +21356,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Connector_USB:USB_C_Receptacle_G-Switch_GT-USB-7010ASV"
 			(at 181.61 257.81 0)
 			(effects
 				(font
@@ -21762,15 +21618,6 @@
 		)
 		(property "Description" "Dual-channel, high side, power distribution switch, 2.7V-5.5V, Active High Output, SOIC-8"
 			(at 104.14 259.08 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C144190"
-			(at 104.14 244.7755 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -22586,7 +22433,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical"
 			(at 25.4 262.89 0)
 			(effects
 				(font
@@ -22967,15 +22814,6 @@
 				(font
 					(size 1.27 1.27)
 				)
-			)
-		)
-		(property "LCSC" "C157353"
-			(at 147.701 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
 			)
 		)
 		(pin "1"
@@ -23591,15 +23429,6 @@
 				)
 			)
 		)
-		(property "LCSC" "C157353"
-			(at 232.156 30.5816 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 		(pin "1"
 			(uuid "6ed83fc8-1865-4646-ba01-07b6f5caa651")
 		)
@@ -23908,7 +23737,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Connector_USB:USB_A_Connfly_DS1095"
 			(at 151.13 215.9 0)
 			(effects
 				(font
@@ -24011,15 +23840,6 @@
 				(font
 					(size 1.27 1.27)
 				)
-			)
-		)
-		(property "LCSC" "C42415655"
-			(at 201.5841 207.01 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
 			)
 		)
 		(pin "1"
@@ -25369,7 +25189,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Connector_USB:USB_C_Receptacle_G-Switch_GT-USB-7010ASV"
 			(at 33.02 38.1 0)
 			(effects
 				(font
