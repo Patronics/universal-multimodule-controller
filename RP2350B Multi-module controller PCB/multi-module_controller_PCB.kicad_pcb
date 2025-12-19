@@ -21354,6 +21354,18 @@
 			)
 		)
 	)
+	(gr_text "V1.0      2025-2026"
+		(at 89.1 152.7 0)
+		(layer "B.SilkS")
+		(uuid "1b5f096d-8383-4bd4-9e4b-dc257a355df2")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+			(justify left bottom mirror)
+		)
+	)
 	(gr_text "5V"
 		(at 112.465 92.255 0)
 		(layer "B.SilkS")
