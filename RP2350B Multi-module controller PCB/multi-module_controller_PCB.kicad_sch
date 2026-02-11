@@ -10778,6 +10778,16 @@
 		)
 		(uuid "0854b8e8-311c-423a-bb3d-a78530493b26")
 	)
+	(text "REV 2 TODO:\nReduce brightness of status LED"
+		(exclude_from_sim no)
+		(at 487.68 238.506 0)
+		(effects
+			(font
+				(size 5 5)
+			)
+		)
+		(uuid "1f92b177-5b30-4cce-b38d-cde5a15f0fb2")
+	)
 	(text "Unused IOs"
 		(exclude_from_sim no)
 		(at 354.33 74.93 0)
