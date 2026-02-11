@@ -5,6 +5,14 @@ Runs on Raspberry Pi Pico or similar RP2040 family boards
 This script reads telemetry data from a 4-in-one multimodule.
 */
 
+/*note: in arduino IDE, select:
+  - Board "Raspberry Pi Pico > Generic RP2350" (from Earle Philhower)
+  - Chip Variant "RP2350B"
+  - Flash Size: 16MB
+  - CPU Speed: 240MHz
+*/
+
+
 #include "MultiModule.h"
 #include "ChannelManager.h"
 #include "UI.h"
@@ -24,10 +32,10 @@ This script reads telemetry data from a 4-in-one multimodule.
 
 //UART constants to configure:
 //adjust as needed for other platforms or Serial Ports
-#define SerialModule Serial2
+#define SerialModule Serial1
 //comment out the following defines if on a non-RP2040 platform where UART pins are fixed
-#define SERIAL_MODULE_RX_PIN 5
-#define SERIAL_MODULE_TX_PIN 4
+#define SERIAL_MODULE_RX_PIN 13
+#define SERIAL_MODULE_TX_PIN 16
 #define SERIAL_MODULE_INVERT_RX
 
 const unsigned long SERIAL_MODULE_BAUD_RATE = 100000;
@@ -38,7 +46,10 @@ unsigned long lastTelemetryMillis = 0;
 unsigned long lastLoopMillis = 0;
 unsigned long lastTxMillis = 0;
 
-const unsigned long msBetweenTxUpdates = 7; 
+const unsigned long msBetweenTxUpdates = 7;
+
+//Select active USB port, either 'A' or 'C'
+char active_usb_port = 'C';
 
 OutputChannelDescriptor outChannels[MAX_CHANNELS]; //declare 16 item OutputChannelDescriptor array
 InputDescriptorPool inChannelsPool;
@@ -47,15 +58,21 @@ InputDescriptorPool inChannelsPool;
 //setup i2c display
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
+#define LED_PIN 33
+
 //UI buttons
-#define OK_BUTTON_PIN 11
-#define BACK_BUTTON_PIN 15
-#define UP_BUTTON_PIN 10
-#define DOWN_BUTTON_PIN 12
-#define LEFT_BUTTON_PIN 14
-#define RIGHT_BUTTON_PIN 13
+#define OK_BUTTON_PIN 28
+#define BACK_BUTTON_PIN 32
+#define UP_BUTTON_PIN 27
+#define DOWN_BUTTON_PIN 29
+#define LEFT_BUTTON_PIN 26
+#define RIGHT_BUTTON_PIN 31
+#define SYS_BUTTON_PIN 25
+#define MDL_BUTTON_PIN 30
 
 const uint16_t BUTTON_DEBOUNCE_INTERVAL = 5;
+#define BUTTON_INPUT_TYPE INPUT_PULLUP
+#define BUTTON_PRESSED_STATE LOW
 
 Bounce2::Button okButton;
 Bounce2::Button backButton;
@@ -63,6 +80,8 @@ Bounce2::Button upButton;
 Bounce2::Button downButton;
 Bounce2::Button leftButton;
 Bounce2::Button rightButton;
+Bounce2::Button sysButton;
+Bounce2::Button mdlButton;
 
 //for picking a menu
 int selectedMenu = 0;
@@ -96,13 +115,18 @@ void unimplementedMenuItemHandler(int index, NavButton btnPressed);
 
 void setup() {
 
+  pinMode(LED_PIN,OUTPUT);
+  digitalWrite(LED_PIN, HIGH);
+
   //bounce2 setup
-  okButton.attach(OK_BUTTON_PIN, INPUT_PULLDOWN);
-  backButton.attach(BACK_BUTTON_PIN, INPUT_PULLDOWN);
-  upButton.attach(UP_BUTTON_PIN, INPUT_PULLDOWN);
-  downButton.attach(DOWN_BUTTON_PIN, INPUT_PULLDOWN);
-  leftButton.attach(LEFT_BUTTON_PIN, INPUT_PULLDOWN);
-  rightButton.attach(RIGHT_BUTTON_PIN, INPUT_PULLDOWN);
+  okButton.attach(OK_BUTTON_PIN, BUTTON_INPUT_TYPE);
+  backButton.attach(BACK_BUTTON_PIN, BUTTON_INPUT_TYPE);
+  upButton.attach(UP_BUTTON_PIN, BUTTON_INPUT_TYPE);
+  downButton.attach(DOWN_BUTTON_PIN, BUTTON_INPUT_TYPE);
+  leftButton.attach(LEFT_BUTTON_PIN, BUTTON_INPUT_TYPE);
+  rightButton.attach(RIGHT_BUTTON_PIN, BUTTON_INPUT_TYPE);
+  sysButton.attach(SYS_BUTTON_PIN, BUTTON_INPUT_TYPE);
+  mdlButton.attach(MDL_BUTTON_PIN, BUTTON_INPUT_TYPE);
 
   //debounce interval
   okButton.interval(BUTTON_DEBOUNCE_INTERVAL);
@@ -111,20 +135,25 @@ void setup() {
   downButton.interval(BUTTON_DEBOUNCE_INTERVAL);
   leftButton.interval(BUTTON_DEBOUNCE_INTERVAL);
   rightButton.interval(BUTTON_DEBOUNCE_INTERVAL);
+  sysButton.interval(BUTTON_DEBOUNCE_INTERVAL);
+  mdlButton.interval(BUTTON_DEBOUNCE_INTERVAL);
 
-  okButton.setPressedState(HIGH);
-  backButton.setPressedState(HIGH);
-  upButton.setPressedState(HIGH);
-  downButton.setPressedState(HIGH);
-  leftButton.setPressedState(HIGH);
-  rightButton.setPressedState(HIGH);
-
+  okButton.setPressedState(BUTTON_PRESSED_STATE);
+  backButton.setPressedState(BUTTON_PRESSED_STATE);
+  upButton.setPressedState(BUTTON_PRESSED_STATE);
+  downButton.setPressedState(BUTTON_PRESSED_STATE);
+  leftButton.setPressedState(BUTTON_PRESSED_STATE);
+  rightButton.setPressedState(BUTTON_PRESSED_STATE);
+  sysButton.setPressedState(BUTTON_PRESSED_STATE);
+  mdlButton.setPressedState(BUTTON_PRESSED_STATE);
 
   //set i2c pins for display
-  Wire.setSDA(20);
-  Wire.setSCL(21);
+  Wire.setSDA(4);
+  Wire.setSCL(5);
   u8g2.begin();
   u8g2.setFont(u8g2_font_tom_thumb_4x6_mf);
+
+  Serial.begin(115200); //init USB serial
 
   //initialize SerialModule on GPIO 16 and 17 (pins 21 and 22), at 100kbaud, even parity, 2 stop bits
   #ifdef SERIAL_MODULE_RX_PIN
@@ -138,7 +167,7 @@ void setup() {
   #endif
   SerialModule.setFIFOSize(SERIAL_MODULE_BUFFER_SIZE);
   SerialModule.begin(SERIAL_MODULE_BAUD_RATE, SERIAL_8E2);
-  Serial.begin(115200); //init USB serial
+
   //initialize stream values
   //start setting up output data structures
   streamOut.header.reserved_bits=0b010101;
@@ -181,13 +210,17 @@ void setup() {
 
   setupMenuLayout();
   redrawMenu(0, -1);
+  digitalWrite(LED_PIN, LOW);
 }
 
 //core 1 is dedicated to USB host actions
 //------------- Core1 -------------//
 void setup1() {
   // configure pio-usb: defined in usbh_helper.h
-  rp2040_configure_pio_usb();
+  //Select active USB port, either 'A' or 'C'
+  disable_usb();
+  delay(1000);
+  rp2040_configure_pio_usb(active_usb_port);
   // run host stack on controller (rhport) 1
   // Note: For rp2040 pico-pio-usb, calling USBHost.begin() on core1 will have most of the
   // host bit-banging processing works done in core1 to free up core0 for other works
@@ -207,6 +240,8 @@ void loop() {
   downButton.update();
   leftButton.update();
   rightButton.update();
+  sysButton.update();
+  mdlButton.update();
 
   NavButton currentNavButton = NO_BUTTON_PRESSED;
   if (okButton.pressed()) {
@@ -226,6 +261,12 @@ void loop() {
   }
   if (rightButton.pressed()) {
     currentNavButton = RIGHT_BUTTON;
+  }
+  if (sysButton.pressed()) {
+    currentNavButton = SYS_BUTTON;
+  }
+  if (mdlButton.pressed()) {
+    currentNavButton = MDL_BUTTON;
   }
   if(currentNavButton){   //NO_BUTTON_PRESSED is falsy
     handleNavButton(currentNavButton);

@@ -23,7 +23,9 @@ enum NavButton {
   UP_BUTTON,
   DOWN_BUTTON,
   LEFT_BUTTON,
-  RIGHT_BUTTON
+  RIGHT_BUTTON,
+  SYS_BUTTON,
+  MDL_BUTTON
 };
 
 //a function pointer for handling a given menu item

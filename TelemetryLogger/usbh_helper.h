@@ -12,22 +12,37 @@
 #ifndef USBH_HELPER_H
 #define USBH_HELPER_H
 
+
+
 #ifdef ARDUINO_ARCH_RP2040
   // pio-usb is required for rp2040 host
   #include "pio_usb.h"
 
   // Pin D+ for host, D- = D+ + 1
   #ifndef PIN_USB_HOST_DP
-  #define PIN_USB_HOST_DP  8
+  #define PIN_USB_HOST_DP  14
   #endif
 
   // Pin for enabling Host VBUS. comment out if not used
   #ifndef PIN_5V_EN
-  //#define PIN_5V_EN        18
+  //USB A port
+  #define PIN_5V_EN        11
+  //USB C port
+  #define PIN_5V_EN_C      8
+
+  //enable USB MUX, active low
+  #define PIN_USB_MUX_EN   22
+  #define PIN_USB_MUX_EN_STATE   LOW
+  #define PIN_USB_MUX_DISABLE_STATE HIGH
+  //select USB output: LOW=USB C, HIGH=USB A
+  #define PIN_USB_SELECT   23
+  #define PIN_USB_SELECT_STATE_C LOW
+  #define PIN_USB_SELECT_STATE_A HIGH
   #endif
 
   #ifndef PIN_5V_EN_STATE
   #define PIN_5V_EN_STATE  1
+  #define PIN_5V_DISABLE_STATE 0
   #endif
 #endif // ARDUINO_ARCH_RP2040
 
@@ -55,7 +70,7 @@
 //--------------------------------------------------------------------+
 
 #ifdef ARDUINO_ARCH_RP2040
-static void rp2040_configure_pio_usb(void) {
+static void rp2040_configure_pio_usb(char selected_usb_port) {
   //while ( !Serial ) delay(10);   // wait for native usb
   Serial.println("Core1 setup to run TinyUSB host with pio-usb");
 
@@ -74,7 +89,20 @@ static void rp2040_configure_pio_usb(void) {
 
 #ifdef PIN_5V_EN
   pinMode(PIN_5V_EN, OUTPUT);
-  digitalWrite(PIN_5V_EN, PIN_5V_EN_STATE);
+  pinMode(PIN_5V_EN_C, OUTPUT);
+  pinMode(PIN_USB_MUX_EN, OUTPUT);
+  pinMode(PIN_USB_SELECT, OUTPUT);
+
+  if(selected_usb_port=='A'){
+      digitalWrite(PIN_5V_EN, PIN_5V_EN_STATE);
+        digitalWrite(PIN_5V_EN_C, PIN_5V_DISABLE_STATE);
+      digitalWrite(PIN_USB_SELECT, PIN_USB_SELECT_STATE_A);
+  } else if (selected_usb_port=='C'){
+      digitalWrite(PIN_5V_EN_C, PIN_5V_EN_STATE);
+      digitalWrite(PIN_5V_EN, PIN_5V_DISABLE_STATE);
+      digitalWrite(PIN_USB_SELECT, PIN_USB_SELECT_STATE_C);
+  }
+  digitalWrite(PIN_USB_MUX_EN, PIN_USB_MUX_EN_STATE);
 #endif
 
   pio_usb_configuration_t pio_cfg = PIO_USB_DEFAULT_CONFIG;
@@ -93,6 +121,13 @@ static void rp2040_configure_pio_usb(void) {
 #endif
 
   USBHost.configure_pio_usb(1, &pio_cfg);
+}
+
+static void disable_usb() {
+  //restore known state, both ports disabled
+  digitalWrite(PIN_5V_EN, PIN_5V_DISABLE_STATE);
+  digitalWrite(PIN_5V_EN_C, PIN_5V_DISABLE_STATE);
+  digitalWrite(PIN_USB_MUX_EN, PIN_USB_MUX_DISABLE_STATE);
 }
 #endif
 

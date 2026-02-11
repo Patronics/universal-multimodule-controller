@@ -10780,11 +10780,12 @@
 	)
 	(text "REV 2 TODO:\nReduce brightness of status LED"
 		(exclude_from_sim no)
-		(at 487.68 238.506 0)
+		(at 411.48 238.506 0)
 		(effects
 			(font
 				(size 5 5)
 			)
+			(justify left)
 		)
 		(uuid "1f92b177-5b30-4cce-b38d-cde5a15f0fb2")
 	)
@@ -10819,6 +10820,16 @@
 			)
 		)
 		(uuid "2c92df68-8e77-4965-b7ba-baf9a04feca5")
+	)
+	(text "alt: I2C0 SCL"
+		(exclude_from_sim no)
+		(at 211.836 253.746 0)
+		(effects
+			(font
+				(size 0.8 0.8)
+			)
+		)
+		(uuid "31bd13db-dd51-4254-8817-18e81d7b69e8")
 	)
 	(text "UART0 TX (CSRF)"
 		(exclude_from_sim no)
@@ -10891,6 +10902,16 @@
 			(justify left bottom)
 		)
 		(uuid "7079d14d-ebaf-4eb3-b264-7a4faf0b923e")
+	)
+	(text "alt: I2C1 SCL"
+		(exclude_from_sim no)
+		(at 212.09 263.906 0)
+		(effects
+			(font
+				(size 0.8 0.8)
+			)
+		)
+		(uuid "85e0bc50-08fc-4d09-ba58-7edb09b2463e")
 	)
 	(text "USB Downstream ports"
 		(exclude_from_sim no)
@@ -10975,6 +10996,16 @@
 		)
 		(uuid "b9181ecd-ba09-4f9b-bef6-f9429533bcf2")
 	)
+	(text "alt: I2C0 SDA"
+		(exclude_from_sim no)
+		(at 211.836 256.032 0)
+		(effects
+			(font
+				(size 0.8 0.8)
+			)
+		)
+		(uuid "be499cf5-85f0-48d6-9cb5-65ee8b07121e")
+	)
 	(text "UART0 RX"
 		(exclude_from_sim no)
 		(at 41.91 254 0)
@@ -10984,6 +11015,16 @@
 			)
 		)
 		(uuid "c28ceb8c-26c3-445a-a5dd-91f49ae1c8b8")
+	)
+	(text "alt: I2C1 SDA"
+		(exclude_from_sim no)
+		(at 212.09 261.366 0)
+		(effects
+			(font
+				(size 0.8 0.8)
+			)
+		)
+		(uuid "db28430a-099f-4660-ab25-0ce53d1c0e1e")
 	)
 	(text "Power"
 		(exclude_from_sim no)

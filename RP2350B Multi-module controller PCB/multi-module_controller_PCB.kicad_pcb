@@ -21678,6 +21678,18 @@
 			(justify mirror)
 		)
 	)
+	(gr_text "REV 2 TODO:\nShift multi-module port down slightly\nto avoid overlap with USB A port"
+		(at 57 125.5 0)
+		(layer "Dwgs.User")
+		(uuid "f9262ea2-9ea8-4b64-9b88-010ffb4acb5f")
+		(effects
+			(font
+				(size 2 2)
+				(thickness 0.25)
+			)
+			(justify right bottom)
+		)
+	)
 	(gr_text "2.5, 2.9"
 		(at 58.255 66 0)
 		(layer "Cmts.User")
