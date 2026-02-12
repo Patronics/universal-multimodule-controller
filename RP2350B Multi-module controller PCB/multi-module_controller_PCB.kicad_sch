@@ -7,7 +7,7 @@
 	(title_block
 		(title "RP2350B QFN80 Mulit-module controller")
 		(date "2025-12-03")
-		(rev "REV1")
+		(rev "REV2")
 		(company "Patronics and Reject Robotics")
 	)
 	(lib_symbols
@@ -10778,9 +10778,9 @@
 		)
 		(uuid "0854b8e8-311c-423a-bb3d-a78530493b26")
 	)
-	(text "REV 2 TODO:\nReduce brightness of status LED"
+	(text "REV 2 TODO:\nConsider always-on power to USB C CC pins\n- use ADC to detect downstream devices and auto-switch active port"
 		(exclude_from_sim no)
-		(at 411.48 238.506 0)
+		(at 43.942 312.928 0)
 		(effects
 			(font
 				(size 5 5)
@@ -10912,6 +10912,17 @@
 			)
 		)
 		(uuid "85e0bc50-08fc-4d09-ba58-7edb09b2463e")
+	)
+	(text "REV 2 Changes:\nReduce R22, R21, and R20 from 330Ω (or 680Ω) to 22Ω, improving signal response time\nAdd R26 protection resistor\nIncrease R25 from 220Ω to 470Ω to reduce LED brightness"
+		(exclude_from_sim no)
+		(at 40.132 348.996 0)
+		(effects
+			(font
+				(size 5 5)
+			)
+			(justify left)
+		)
+		(uuid "87779dae-8637-426f-b11d-59b2ea2d7193")
 	)
 	(text "USB Downstream ports"
 		(exclude_from_sim no)
@@ -12831,16 +12842,6 @@
 	)
 	(wire
 		(pts
-			(xy 45.72 256.54) (xy 30.48 256.54)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "2c4a0a67-3961-46cb-9e96-50c706890608")
-	)
-	(wire
-		(pts
 			(xy 236.22 151.13) (xy 251.46 151.13)
 		)
 		(stroke
@@ -12858,6 +12859,16 @@
 			(type default)
 		)
 		(uuid "2cbf0036-78b6-4b08-9418-f34f5d5fba20")
+	)
+	(wire
+		(pts
+			(xy 38.1 256.54) (xy 45.72 256.54)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2cd2188f-885c-43c4-94fd-ff781ae968c9")
 	)
 	(wire
 		(pts
@@ -16718,6 +16729,16 @@
 			(type default)
 		)
 		(uuid "e4ba739a-a3c8-44c6-8f50-d8a45eb44921")
+	)
+	(wire
+		(pts
+			(xy 30.48 256.54) (xy 33.02 256.54)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e4bbf4e4-b8e2-4f65-a2f3-c0c1f41b00f6")
 	)
 	(wire
 		(pts
@@ -23689,7 +23710,7 @@
 				)
 			)
 		)
-		(property "Value" "330"
+		(property "Value" "22"
 			(at 35.56 265.0052 90)
 			(effects
 				(font
@@ -26675,7 +26696,7 @@
 				)
 			)
 		)
-		(property "Value" "220"
+		(property "Value" "470"
 			(at 386.08 239.8338 90)
 			(effects
 				(font
@@ -27236,7 +27257,7 @@
 				)
 			)
 		)
-		(property "Value" "330"
+		(property "Value" "22"
 			(at 35.306 261.1952 90)
 			(effects
 				(font
@@ -28075,6 +28096,82 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:R_Small")
+		(at 35.56 256.54 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "cfcd61d2-4436-4297-b6c1-41680ad290b0")
+		(property "Reference" "R26"
+			(at 35.56 256.4353 90)
+			(effects
+				(font
+					(size 1.016 1.016)
+				)
+			)
+		)
+		(property "Value" "22"
+			(at 32.766 255.6072 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+			(at 35.56 256.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 35.56 256.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Resistor, small symbol"
+			(at 35.56 256.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C25130"
+			(at 35.56 251.8633 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "2fc7f126-b120-4e36-bc07-c63cdcca4c9d")
+		)
+		(pin "2"
+			(uuid "50b1e9c9-dccc-4e40-96ba-3656cf92e227")
+		)
+		(instances
+			(project "multi-module_controller_PCB"
+				(path "/94683f5c-9cd9-448e-be96-9792537b5cb8"
+					(reference "R26")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:GND")
 		(at 321.31 40.64 0)
 		(mirror y)
@@ -28721,18 +28818,17 @@
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(fields_autoplaced yes)
 		(uuid "e1c96cb9-9f52-42c0-8e08-6536c6047f11")
 		(property "Reference" "R20"
-			(at 35.56 249.3233 90)
+			(at 35.56 253.8953 90)
 			(effects
 				(font
 					(size 1.016 1.016)
 				)
 			)
 		)
-		(property "Value" "680"
-			(at 35.56 251.5432 90)
+		(property "Value" "22"
+			(at 35.56 252.0512 90)
 			(effects
 				(font
 					(size 1.27 1.27)
