@@ -7,9 +7,10 @@ This script reads telemetry data from a 4-in-one multimodule.
 
 /*note: in arduino IDE, select:
   - Board "Raspberry Pi Pico > Generic RP2350" (from Earle Philhower)
-  - Chip Variant "RP2350B"
   - Flash Size: 16MB
-  - CPU Speed: 240MHz
+  - CPU Speed: 240MHz (Overclock)
+  - USB Stack: Adafruit TinyUSB
+  - Chip Variant "RP2350B"
 */
 
 
@@ -48,15 +49,31 @@ unsigned long lastTxMillis = 0;
 
 const unsigned long msBetweenTxUpdates = 7;
 
-//Select active USB port, either 'A' or 'C'
-char active_usb_port = 'C';
+//Select active USB port, either 'A' or 'C', or 'Z' to prompt clean-up and shutdown of the ports
+volatile char requested_usb_port = 'A';
+char active_usb_port = requested_usb_port;
 
 OutputChannelDescriptor outChannels[MAX_CHANNELS]; //declare 16 item OutputChannelDescriptor array
 InputDescriptorPool inChannelsPool;
 
 
-//setup i2c display
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+#define USE_I2C_DISPLAY
+
+#ifdef USE_I2C_DISPLAY
+  //setup i2c display
+  U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+  #define I2C_DISPLAY_SDA_PIN 4
+  #define I2C_DISPLAY_SCL_PIN 5
+#endif
+
+#ifdef USE_SPI_DISPLAY
+  #define SPI_DISPLAY_RST_PIN 5
+  #define SPI_DISPLAY_DC_PIN 4
+  #define SPI_DISPLAY_CS_PIN 1
+  #define SPI_DISPLAY_CLK_PIN 2
+  #define SPI_DISPLAY_TX_PIN 3
+  //todo: add U8G2 init for chosen SPI display
+#endif
 
 #define LED_PIN 33
 
@@ -88,10 +105,21 @@ int selectedMenu = 0;
 //the currently open menu, or -1 for none
 int currentMenu = -1;
 
+const int CURRENT_MENU_NONE = -1;
+
 int menuSubpageIndex = 0;  //for arbitrary use by sub-menu logic, should be reset to zero on exit from submenu
 
+menuItem sysMenu[MENU_ITEM_COUNT];
+menuItem mdlMenu[MENU_ITEM_COUNT];
 
-menuItem menuItems[MENU_ITEM_COUNT];
+menuItem* menuItems = mdlMenu;
+
+
+// USB Language ID: English
+#define LANGUAGE_ID 0x0409
+
+// CFG_TUH_DEVICE_MAX is defined by tusb_config header
+usb_dev_info_t usb_raw_descriptors[CFG_TUH_DEVICE_MAX] = { 0 };
 
 USBInputDeviceDescriptor USBDeviceDescriptors[MAX_USB_DEVICE_DESCRIPTORS];
 uint8_t numberOfDeviceDescriptors = 0;
@@ -148,8 +176,10 @@ void setup() {
   mdlButton.setPressedState(BUTTON_PRESSED_STATE);
 
   //set i2c pins for display
-  Wire.setSDA(4);
-  Wire.setSCL(5);
+  #ifdef USE_I2C_DISPLAY
+    Wire.setSDA(I2C_DISPLAY_SDA_PIN);
+    Wire.setSCL(I2C_DISPLAY_SCL_PIN);
+  #endif
   u8g2.begin();
   u8g2.setFont(u8g2_font_tom_thumb_4x6_mf);
 
@@ -228,7 +258,21 @@ void setup1() {
 }
 
 void loop1() {
-  USBHost.task();
+  if (requested_usb_port != active_usb_port){
+    Serial.print("Updating active USB port!");
+    disable_usb();
+    delay(1000);
+    USBHost.task();
+    USBHost.task();
+    USBHost.task();
+    if(requested_usb_port == 'A' || requested_usb_port=='C'){
+      change_active_usb_port(requested_usb_port);
+    }
+    active_usb_port = requested_usb_port;
+
+  } else if(active_usb_port == 'A' || active_usb_port == 'C') {
+    USBHost.task();
+  }
 }
 
 //core zero runs all non-usb tasks
@@ -263,13 +307,21 @@ void loop() {
     currentNavButton = RIGHT_BUTTON;
   }
   if (sysButton.pressed()) {
-    currentNavButton = SYS_BUTTON;
+    handleNavButton(BACK_BUTTON); //force exit active menu
+    menuItems = sysMenu;
+    selectedMenu = 0;
+    redrawMenu(selectedMenu, CURRENT_MENU_NONE);
+    currentNavButton = NO_BUTTON_PRESSED;
   }
   if (mdlButton.pressed()) {
-    currentNavButton = MDL_BUTTON;
+    handleNavButton(BACK_BUTTON); //force exit active menu
+    menuItems = mdlMenu;
+    redrawMenu(0, -1);
+    currentNavButton = NO_BUTTON_PRESSED;
   }
   if(currentNavButton){   //NO_BUTTON_PRESSED is falsy
     handleNavButton(currentNavButton);
+
   }
 
   getTelemetry();
@@ -353,10 +405,14 @@ void drawMenuItem(const char* label, int thisPageIndex, int selectedMenu, int cu
 };
 
 void redrawMenu(int selectedMenuItem, int activeMenuItem) {
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(0, 20, DISPLAY_PIXEL_WIDTH, 24); //draw box over menu area, region 20<y<44
   for(int menuNumber = 0; menuNumber < MENU_ITEM_COUNT; menuNumber++){
     drawMenuItem(menuItems[menuNumber].label, menuNumber, selectedMenuItem, activeMenuItem);
   }
+  u8g2.setDrawColor(1);
   u8g2.drawHLine(3, 44, DISPLAY_PIXEL_WIDTH);
+  u8g2.sendBuffer();
 }
 
 void handleNavButton(NavButton btn){
@@ -376,6 +432,9 @@ void handleNavButton(NavButton btn){
     if(selectedMenu < 0){
       selectedMenu = 0;
     }
+    if(selectedMenu >= MENU_ITEM_COUNT){
+      selectedMenu -= 2;
+    }
   }
   //when menu is active, pass input to it;
   if (currentMenu >= 0) {
@@ -387,7 +446,6 @@ void handleNavButton(NavButton btn){
   }
   
   redrawMenu(selectedMenu, currentMenu);
-  u8g2.sendBuffer();
 }
 
 void clearMenuContents(){
@@ -397,7 +455,10 @@ void clearMenuContents(){
 }
 
 void setupMenuLayout(){
+
+  ////////model-menu items ////////
   int menuNumber = 0;
+  menuItems = mdlMenu;
   strlcpy(menuItems[menuNumber].label, "Protocol", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = protocolSelectMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
@@ -407,34 +468,88 @@ void setupMenuLayout(){
   menuItems[menuNumber].buttonHandler = subProtocolSelectMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
-  strlcpy(menuItems[menuNumber].label, "TX Active", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = activateTxMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber;
-  menuNumber++;
+
   strlcpy(menuItems[menuNumber].label, "Recv select", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = receiverSelectMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
-  // strlcpy(menuItems[menuNumber].label, "Optn-protocol", MENU_ITEM_LABEL_SIZE);
-  // menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
-  // menuItems[menuNumber].index = menuNumber++;
-  //menuNumber++;
+
   strlcpy(menuItems[menuNumber].label, "Channel Map", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = channelMapMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
+
   strlcpy(menuItems[menuNumber].label, "Channel Range", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
+
   strlcpy(menuItems[menuNumber].label, "Values", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
+
   strlcpy(menuItems[menuNumber].label, "Failsafe Value", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 7
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+
+//////// system-menu items
+  menuItems = sysMenu;
+  menuNumber=0;
+
+  strlcpy(menuItems[menuNumber].label, "TX Active", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = activateTxMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "USB Port", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = usbPortSelectMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 2
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 3
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 4
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 5
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 6
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 6
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+  // strlcpy(menuItems[menuNumber].label, "Optn-protocol", MENU_ITEM_LABEL_SIZE);
+  // menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  // menuItems[menuNumber].index = menuNumber++;
+  //menuNumber++;
+
+
 }
 
 
@@ -481,6 +596,36 @@ void activateTxMenuItemHandler(int index, NavButton btnPressed){
     clearMenuContents();
   }
 }
+
+void usbPortSelectMenuItemHandler(int index, NavButton btnPressed){
+  bool updated=false;
+  if (btnPressed == LEFT_BUTTON){
+    updated=true;
+    requested_usb_port = 'A';
+  } else if (btnPressed == RIGHT_BUTTON){
+    updated=true;
+    requested_usb_port = 'C';
+  } else if (btnPressed == DOWN_BUTTON){
+    updated=true;
+    requested_usb_port = 'Z';
+  } else if (btnPressed == BACK_BUTTON){
+    clearMenuContents();
+  }
+  if(updated || btnPressed == OK_BUTTON){
+    u8g2.setCursor(0,50);
+    u8g2.setDrawColor(0); //hightlight currently selected value
+    u8g2.print("Current: ");
+    u8g2.print(requested_usb_port);
+    u8g2.setDrawColor(1);
+    u8g2.setCursor(0, 56);
+    u8g2.print("Left: USB A,");
+    u8g2.setCursor(DISPLAY_PIXEL_WIDTH/2, 56);
+    u8g2.print("Right: USB C,");
+    u8g2.setCursor(0, 62);
+    u8g2.print("Down: disable USB");
+  }
+}
+
 
 void protocolSelectMenuItemHandler(int index, NavButton btnPressed){
   bool updated=false;
@@ -877,16 +1022,136 @@ void u8g2PrintStrWithMaxLength(const char* str, const int length){
   u8g2.print(buf);
 }
 
+
+
+//usb descriptor related helpers:
+static void _convert_utf16le_to_utf8(const uint16_t *utf16, size_t utf16_len, uint8_t *utf8, size_t utf8_len) {
+  // TODO: Check for runover.
+  (void) utf8_len;
+  // Get the UTF-16 length out of the data itself.
+
+  for (size_t i = 0; i < utf16_len; i++) {
+    uint16_t chr = utf16[i];
+    if (chr < 0x80) {
+      *utf8++ = chr & 0xff;
+    } else if (chr < 0x800) {
+      *utf8++ = (uint8_t) (0xC0 | (chr >> 6 & 0x1F));
+      *utf8++ = (uint8_t) (0x80 | (chr >> 0 & 0x3F));
+    } else {
+      // TODO: Verify surrogate.
+      *utf8++ = (uint8_t) (0xE0 | (chr >> 12 & 0x0F));
+      *utf8++ = (uint8_t) (0x80 | (chr >> 6 & 0x3F));
+      *utf8++ = (uint8_t) (0x80 | (chr >> 0 & 0x3F));
+    }
+    // TODO: Handle UTF-16 code points that take two entries.
+  }
+}
+
+// Count how many bytes a utf-16-le encoded string will take in utf-8.
+static int _count_utf8_bytes(const uint16_t *buf, size_t len) {
+  size_t total_bytes = 0;
+  for (size_t i = 0; i < len; i++) {
+    uint16_t chr = buf[i];
+    if (chr < 0x80) {
+      total_bytes += 1;
+    } else if (chr < 0x800) {
+      total_bytes += 2;
+    } else {
+      total_bytes += 3;
+    }
+    // TODO: Handle UTF-16 code points that take two entries.
+  }
+  return total_bytes;
+}
+
+void utf16_to_utf8(uint16_t *temp_buf, size_t buf_len) {
+  size_t utf16_len = ((temp_buf[0] & 0xff) - 2) / sizeof(uint16_t);
+  size_t utf8_len = _count_utf8_bytes(temp_buf + 1, utf16_len);
+
+  _convert_utf16le_to_utf8(temp_buf + 1, utf16_len, (uint8_t *) temp_buf, buf_len);
+  ((uint8_t *) temp_buf)[utf8_len] = '\0';
+}
+
+void print_device_descriptor(tuh_xfer_t *xfer) {
+  if (XFER_RESULT_SUCCESS != xfer->result) {
+    Serial.printf("Failed to get device descriptor\r\n");
+    return;
+  }
+
+  uint8_t const daddr = xfer->daddr;
+  usb_dev_info_t *dev = &usb_raw_descriptors[daddr - 1];; //all instances will have the same descriptor
+  tusb_desc_device_t *desc = &dev->desc_device;
+
+  Serial.printf("Device %u: ID %04x:%04x\r\n", daddr, desc->idVendor, desc->idProduct);
+  Serial.printf("Device Descriptor:\r\n");
+  Serial.printf("  bLength             %u\r\n"     , desc->bLength);
+  Serial.printf("  bDescriptorType     %u\r\n"     , desc->bDescriptorType);
+  Serial.printf("  bcdUSB              %04x\r\n"   , desc->bcdUSB);
+  Serial.printf("  bDeviceClass        %u\r\n"     , desc->bDeviceClass);
+  Serial.printf("  bDeviceSubClass     %u\r\n"     , desc->bDeviceSubClass);
+  Serial.printf("  bDeviceProtocol     %u\r\n"     , desc->bDeviceProtocol);
+  Serial.printf("  bMaxPacketSize0     %u\r\n"     , desc->bMaxPacketSize0);
+  Serial.printf("  idVendor            0x%04x\r\n" , desc->idVendor);
+  Serial.printf("  idProduct           0x%04x\r\n" , desc->idProduct);
+  Serial.printf("  bcdDevice           %04x\r\n"   , desc->bcdDevice);
+
+  // Get String descriptor using Sync API
+  Serial.printf("  iManufacturer       %u     ", desc->iManufacturer);
+  if (XFER_RESULT_SUCCESS ==
+      tuh_descriptor_get_manufacturer_string_sync(daddr, LANGUAGE_ID, dev->manufacturer, sizeof(dev->manufacturer))) {
+    utf16_to_utf8(dev->manufacturer, sizeof(dev->manufacturer));
+    Serial.printf((char *) dev->manufacturer);
+  }
+  Serial.printf("\r\n");
+
+  Serial.printf("  iProduct            %u     ", desc->iProduct);
+  if (XFER_RESULT_SUCCESS ==
+      tuh_descriptor_get_product_string_sync(daddr, LANGUAGE_ID, dev->product, sizeof(dev->product))) {
+    utf16_to_utf8(dev->product, sizeof(dev->product));
+    Serial.printf((char *) dev->product);
+  }
+  Serial.printf("\r\n");
+
+  Serial.printf("  iSerialNumber       %u     ", desc->iSerialNumber);
+  if (XFER_RESULT_SUCCESS ==
+      tuh_descriptor_get_serial_string_sync(daddr, LANGUAGE_ID, dev->serial, sizeof(dev->serial))) {
+    utf16_to_utf8(dev->serial, sizeof(dev->serial));
+    Serial.printf((char *) dev->serial);
+  }
+  Serial.printf("\r\n");
+
+  Serial.printf("  bNumConfigurations  %u\r\n", desc->bNumConfigurations);
+
+  // print device summary
+  //print_lsusb();
+}
+
 //--------------------------------------------------------------------+
 // TinyUSB Host callbacks
 //--------------------------------------------------------------------+
 extern "C"
 {
 
-//NOTE: tuh_hid_mount_cb does not seem to be called when the USB device is connected before the host starts.
-//      with glow-clock derived proto-board, unplug USB device before starting host
-//TODO: provide USB power switching capability in dedicated hardware implementation, then adjust usbh_helper PIN_5V_EN define accordingly
 
+//get USB device descriptor, currently mostly unused aside from debug logging
+void tuh_mount_cb(uint8_t dev_addr) {
+  Serial.printf("Device attached, address = %d\r\n", dev_addr);
+
+  usb_dev_info_t *dev = &usb_raw_descriptors[dev_addr - 1];
+  dev->mounted = true;
+
+  // Get Device Descriptor
+  tuh_descriptor_get_device(dev_addr, &dev->desc_device, 18, print_device_descriptor, 0);
+
+}
+
+  /*
+  TODO: use tuh_descriptor_get_hid_report https://sourcevu.sysprogs.com/rp2040/lib/tinyusb/files/src/host/usbh.h#tok1113
+  to get full HID report to dynamically populate controller data
+
+  See also: https://github.com/hathach/tinyusb/blob/a0982cd5ca5727064520af418915e3d8efb204d3/src/device/usbd.h#L315
+
+*/
 
 // Invoked when device with hid interface is mounted
 // Report descriptor is also available for use.
@@ -914,6 +1179,9 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
     USBDeviceDescriptors[thisDeviceIndex].dev_addr = dev_addr;
     USBDeviceDescriptors[thisDeviceIndex].instance = instance;
     USBDeviceDescriptors[thisDeviceIndex].deviceNum = thisDeviceIndex;
+      //store raw device descriptor and print it:
+    //tuh_descriptor_get_device(dev_addr, &USBDeviceDescriptors[thisDeviceIndex].usb_dev_info, 18, print_device_descriptor, 0);
+    //delay(100);
     snprintf(USBDeviceDescriptors[thisDeviceIndex].name, INPUT_NAME_LEN, "usb dev #(%d)", thisDeviceIndex);
   } else {
     Serial.println("Error: max number of device descriptors exceeded!");
@@ -956,7 +1224,7 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
     descriptor -> vid = 0; //mark this descriptor as unused
     releaseUSBInputChannels(&inChannelsPool, descriptor);
   } else {
-    Serial.print("Warning: unmounted device does not appear to have descriptor, check for erronious logic");
+    Serial.print("Warning: unmounted device does not appear to have descriptor, check for erroneous logic");
   }
   //TODO: free context for inputs if allocated
   Serial.printf("HID device address = %d, instance = %d is unmounted\r\n", dev_addr, instance);

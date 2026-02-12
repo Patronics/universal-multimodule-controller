@@ -4,6 +4,11 @@
 #ifndef CONTROLLER_DATA_H
 #define CONTROLLER_DATA_H
 
+
+///TODO: use tuh_descriptor_get_hid_report https://sourcevu.sysprogs.com/rp2040/lib/tinyusb/files/src/host/usbh.h#tok1113
+///to get full HID report to dynamically populate controller data
+
+
 inline const USBGamepadLayoutDefinition GAMEPAD_TYPE_SONY_DS4 = {
   .name="Dualshock 4",
   .vid=0x054c,

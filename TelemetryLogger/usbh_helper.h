@@ -69,6 +69,27 @@
 // Helper Functions
 //--------------------------------------------------------------------+
 
+static void configure_usb_port_pins(char selected_usb_port){
+  #ifdef PIN_5V_EN
+    pinMode(PIN_5V_EN, OUTPUT);
+    pinMode(PIN_5V_EN_C, OUTPUT);
+    pinMode(PIN_USB_MUX_EN, OUTPUT);
+    pinMode(PIN_USB_SELECT, OUTPUT);
+
+    if(selected_usb_port=='A'){
+        digitalWrite(PIN_5V_EN, PIN_5V_EN_STATE);
+          digitalWrite(PIN_5V_EN_C, PIN_5V_DISABLE_STATE);
+        digitalWrite(PIN_USB_SELECT, PIN_USB_SELECT_STATE_A);
+    } else if (selected_usb_port=='C'){
+        digitalWrite(PIN_5V_EN_C, PIN_5V_EN_STATE);
+        digitalWrite(PIN_5V_EN, PIN_5V_DISABLE_STATE);
+        digitalWrite(PIN_USB_SELECT, PIN_USB_SELECT_STATE_C);
+    }
+    digitalWrite(PIN_USB_MUX_EN, PIN_USB_MUX_EN_STATE);
+  #endif
+}
+
+
 #ifdef ARDUINO_ARCH_RP2040
 static void rp2040_configure_pio_usb(char selected_usb_port) {
   //while ( !Serial ) delay(10);   // wait for native usb
@@ -87,23 +108,7 @@ static void rp2040_configure_pio_usb(char selected_usb_port) {
     }
   }
 
-#ifdef PIN_5V_EN
-  pinMode(PIN_5V_EN, OUTPUT);
-  pinMode(PIN_5V_EN_C, OUTPUT);
-  pinMode(PIN_USB_MUX_EN, OUTPUT);
-  pinMode(PIN_USB_SELECT, OUTPUT);
-
-  if(selected_usb_port=='A'){
-      digitalWrite(PIN_5V_EN, PIN_5V_EN_STATE);
-        digitalWrite(PIN_5V_EN_C, PIN_5V_DISABLE_STATE);
-      digitalWrite(PIN_USB_SELECT, PIN_USB_SELECT_STATE_A);
-  } else if (selected_usb_port=='C'){
-      digitalWrite(PIN_5V_EN_C, PIN_5V_EN_STATE);
-      digitalWrite(PIN_5V_EN, PIN_5V_DISABLE_STATE);
-      digitalWrite(PIN_USB_SELECT, PIN_USB_SELECT_STATE_C);
-  }
-  digitalWrite(PIN_USB_MUX_EN, PIN_USB_MUX_EN_STATE);
-#endif
+  configure_usb_port_pins(selected_usb_port);
 
   pio_usb_configuration_t pio_cfg = PIO_USB_DEFAULT_CONFIG;
   pio_cfg.pin_dp = PIN_USB_HOST_DP;
@@ -123,12 +128,21 @@ static void rp2040_configure_pio_usb(char selected_usb_port) {
   USBHost.configure_pio_usb(1, &pio_cfg);
 }
 
+#endif
+
+
 static void disable_usb() {
   //restore known state, both ports disabled
   digitalWrite(PIN_5V_EN, PIN_5V_DISABLE_STATE);
   digitalWrite(PIN_5V_EN_C, PIN_5V_DISABLE_STATE);
   digitalWrite(PIN_USB_MUX_EN, PIN_USB_MUX_DISABLE_STATE);
 }
-#endif
+
+
+static void change_active_usb_port(char selected_usb_port){
+  disable_usb();
+  configure_usb_port_pins(selected_usb_port);
+}
+
 
 #endif

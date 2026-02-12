@@ -1,5 +1,8 @@
 #include <stdint.h>
 #include "UI.h"
+//#include "usbh_helper.h"
+#include "Adafruit_TinyUSB.h"
+#include "pio_usb.h"
 
 #ifndef CHANNEL_MANAGER_H
 #define CHANNEL_MANAGER_H
@@ -92,7 +95,17 @@ typedef struct {
     char     digitalInputNames[MAX_INPUT_CHANNELS_PER_USB_DEVICE][USB_INPUT_CHANNEL_NAME_LEN];
 } USBGamepadLayoutDefinition;
 
+
 typedef struct {
+  tusb_desc_device_t desc_device;
+  uint16_t manufacturer[32];
+  uint16_t product[48];
+  uint16_t serial[16];
+  bool mounted;
+} usb_dev_info_t;
+
+typedef struct {
+    usb_dev_info_t usb_dev_info;
     uint8_t hidInterfaceType;  //intended to match values in hid_interface_protocol_extended_enum_t
     uint16_t vid, pid;
     uint8_t dev_addr, instance; //note: device may have multiple instances, in which case each will have a distinct USBInputDeviceDescriptor
