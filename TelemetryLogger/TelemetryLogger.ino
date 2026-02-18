@@ -7,7 +7,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 
 /*note: in arduino IDE, select:
   - Board "Raspberry Pi Pico > Generic RP2350" (from Earle Philhower)
-  - Flash Size: 16MB
+  - Flash Size: 16MB (Sketch 8MB, FS 8MB)
   - CPU Speed: 240MHz (Overclock)
   - USB Stack: Adafruit TinyUSB
   - Chip Variant "RP2350B"
@@ -22,6 +22,9 @@ This script reads telemetry data from a 4-in-one multimodule.
 // USBHost is defined in usbh_helper.h
 #include "usbh_helper.h"
 
+#include <LittleFS.h>
+#include <ArduinoJson.h>
+
 #include <U8g2lib.h>
 #ifdef U8X8_HAVE_HW_SPI
 #include <SPI.h>
@@ -29,6 +32,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 #ifdef U8X8_HAVE_HW_I2C
 #include <Wire.h>
 #endif
+
 #include <Bounce2.h>
 
 //UART constants to configure:
@@ -48,6 +52,14 @@ unsigned long lastLoopMillis = 0;
 unsigned long lastTxMillis = 0;
 
 const unsigned long msBetweenTxUpdates = 7;
+
+
+struct persistent_settings {
+  char enabled_port;
+  uint8_t default_protocol_mode;
+  uint8_t default_subprotocol_mode;
+};
+
 
 //Select active USB port, either 'A' or 'C', or 'Z' to prompt clean-up and shutdown of the ports
 volatile char requested_usb_port = 'A';
@@ -143,6 +155,7 @@ void unimplementedMenuItemHandler(int index, NavButton btnPressed);
 
 void setup() {
 
+  Serial.begin(115200); //init USB serial
   pinMode(LED_PIN,OUTPUT);
   digitalWrite(LED_PIN, HIGH);
 
@@ -183,8 +196,6 @@ void setup() {
   u8g2.begin();
   u8g2.setFont(u8g2_font_tom_thumb_4x6_mf);
 
-  Serial.begin(115200); //init USB serial
-
   //initialize SerialModule on GPIO 16 and 17 (pins 21 and 22), at 100kbaud, even parity, 2 stop bits
   #ifdef SERIAL_MODULE_RX_PIN
     SerialModule.setRX(SERIAL_MODULE_RX_PIN);
@@ -208,34 +219,36 @@ void setup() {
   streamOut.option_protocol = -128; //unknown purpose, matching example from transmitter for now
   streamOut.extended_protocol.telemetry_Invert = 1;
 
- /* while (!Serial) {
+  while (!Serial) {
     ; // wait for USB serial port to connect
-  }*/
-  /*setChannelValue(&streamOut, 0, 2047);
-  setChannelValue(&streamOut, 1, 0);
-  setChannelValue(&streamOut, 2, 1);
-  setChannelValue(&streamOut, 3, 0);
-  setChannelValue(&streamOut, 4, 3);
-  setChannelValue(&streamOut, 5, 0);
-  setChannelValue(&streamOut, 6, 7);
-  setChannelValue(&streamOut, 7, 0);
-  setChannelValue(&streamOut, 8, 15);
-  setChannelValue(&streamOut, 9, 0);
-  setChannelValue(&streamOut, 10, 31);
-  setChannelValue(&streamOut, 11, 0);
-  setChannelValue(&streamOut, 12, 63);
-  setChannelValue(&streamOut, 13, 0);
-  setChannelValue(&streamOut, 14, 127);
-  setChannelValue(&streamOut, 15, 0);*/
-  Serial.println("start telemetry log.");
+  }
+
+  if(!LittleFS.begin()){
+    Serial.println("FS begin failed");
+  } else {
+    FSInfo fs_info;
+    if (!LittleFS.info(fs_info)) {
+      Serial.println("FS info() failed");
+    } else {
+      Serial.println("LittleFS info:");
+      Serial.print("  totalBytes:     "); Serial.println((unsigned long long)fs_info.totalBytes);
+      Serial.print("  usedBytes:      "); Serial.println((unsigned long long)fs_info.usedBytes);
+      Serial.print("  blockSize:      "); Serial.println((size_t)fs_info.blockSize);
+      Serial.print("  pageSize:       "); Serial.println((size_t)fs_info.pageSize);
+      Serial.print("  maxOpenFiles:   "); Serial.println((size_t)fs_info.maxOpenFiles);
+      Serial.print("  maxPathLength:  "); Serial.println((size_t)fs_info.maxPathLength);
+    }
+  }
+
+  Serial.println("starting.");
 
   initDefaultInputDescriptors(&inChannelsPool);
   initOutputAndDefaultInputChannelDescriptors(outChannels, &inChannelsPool, MAX_CHANNELS);
   
 
 
-  Serial.print("output struct:");
-  printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
+  //Serial.print("output struct:");
+  //printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
 
 
   setupMenuLayout();
