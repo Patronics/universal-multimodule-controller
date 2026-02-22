@@ -22,6 +22,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 // USBHost is defined in usbh_helper.h
 #include "usbh_helper.h"
 
+#include <VFS.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 
@@ -53,7 +54,7 @@ unsigned long lastTxMillis = 0;
 
 const unsigned long msBetweenTxUpdates = 7;
 
-
+//currently unused, for saving persistient system-wide settings
 struct persistent_settings {
   char enabled_port;
   uint8_t default_protocol_mode;
@@ -219,13 +220,14 @@ void setup() {
   streamOut.option_protocol = -128; //unknown purpose, matching example from transmitter for now
   streamOut.extended_protocol.telemetry_Invert = 1;
 
-  while (!Serial) {
+  /*while (!Serial) {
     ; // wait for USB serial port to connect
-  }
+  }*/
 
   if(!LittleFS.begin()){
     Serial.println("FS begin failed");
   } else {
+    VFS.root(LittleFS);
     FSInfo fs_info;
     if (!LittleFS.info(fs_info)) {
       Serial.println("FS info() failed");
@@ -271,6 +273,7 @@ void setup1() {
 }
 
 void loop1() {
+  //valid requested USB ports are A, C, and Z (disabled).
   if (requested_usb_port != active_usb_port){
     Serial.print("Updating active USB port!");
     disable_usb();
@@ -472,6 +475,17 @@ void setupMenuLayout(){
   ////////model-menu items ////////
   int menuNumber = 0;
   menuItems = mdlMenu;
+
+  strlcpy(menuItems[menuNumber].label, "Load/Save mdl", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = modelSaveLoadMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
+  strlcpy(menuItems[menuNumber].label, "Channel Map", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = channelMapMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
   strlcpy(menuItems[menuNumber].label, "Protocol", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = protocolSelectMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
@@ -487,11 +501,6 @@ void setupMenuLayout(){
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
 
-  strlcpy(menuItems[menuNumber].label, "Channel Map", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = channelMapMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber;
-  menuNumber++;
-
   strlcpy(menuItems[menuNumber].label, "Channel Range", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
@@ -503,11 +512,6 @@ void setupMenuLayout(){
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "Failsafe Value", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber;
-  menuNumber++;
-
-  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 7
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
@@ -552,7 +556,7 @@ void setupMenuLayout(){
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
 
-  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 6
+  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 7
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
@@ -839,6 +843,100 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
     clearMenuContents();
   }
 }
+
+void modelSaveLoadMenuItemHandler(int index, NavButton btnPressed){
+  bool updated=false;
+  if (btnPressed == LEFT_BUTTON){
+    updated=true;
+    menuSubpageIndex -= 1;
+    if(menuSubpageIndex < 0){
+      menuSubpageIndex = 0;
+    }
+  } else if (btnPressed == RIGHT_BUTTON){
+    updated=true;
+    menuSubpageIndex += 1;
+  } else if (btnPressed == UP_BUTTON){
+    updated=true;
+    saveModelToFileAtIndex(menuSubpageIndex);
+  } else if (btnPressed == DOWN_BUTTON){
+    updated=true;
+    loadModelFromFileAtIndex(menuSubpageIndex);
+  } else if( btnPressed == OK_BUTTON){
+    updated=true;
+  } else if (btnPressed == BACK_BUTTON){
+    clearMenuContents();
+  }
+  if(updated){
+    u8g2.setCursor(0,50);
+    u8g2.print("Current: ");
+    u8g2.print(menuSubpageIndex);
+    u8g2.print(" ");
+    u8g2.setDrawColor(0); //hightlight currently selected value
+    u8g2.print(" ");
+    u8g2.print(getBasicModelStringByIndex(menuSubpageIndex));
+    u8g2.setDrawColor(1); //clear highlight
+    u8g2.print("      ");
+    u8g2.setCursor(0, 56);
+    u8g2.print("Left/Right : select model");
+    u8g2.setCursor(0, 62);
+    u8g2.print("Down: Load");
+    u8g2.setCursor(DISPLAY_PIXEL_WIDTH/2, 62);
+    u8g2.print("Up: Save");
+  }
+}
+
+// end of menu item handlers //
+
+// ------ Model load/save routines ------- //
+String getBasicModelStringByIndex(int index){
+  if(!LittleFS.exists("/models/index/"+String(index)+"/model.json")){
+    return "No model saved";
+  }
+  File modelFile = LittleFS.open("/models/index/"+String(index)+"/model.json", "r");
+  JsonDocument modelDoc;
+  deserializeJson(modelDoc, modelFile);
+  modelFile.close();
+  uint8_t protocol = modelDoc["protocol"];
+  uint8_t subprotocol = modelDoc["subprotocol"];
+  char port = (char)modelDoc["port"].as<unsigned char>();
+  return ("prot: "+String(protocol)+":"+String(subprotocol)+"("+port+")");
+}
+
+void saveModelToFileAtIndex(int index){
+  File newModelFile = LittleFS.open("/models/index/"+String(index)+"/model.json", "w");
+  JsonDocument newModelDoc;
+  newModelDoc["protocol"] = currentActiveProtocol;
+  newModelDoc["subprotocol"] = currentActiveSubProtocol;
+  newModelDoc["port"] = (unsigned char)active_usb_port;
+  serializeJson(newModelDoc, newModelFile);
+  newModelFile.close();
+}
+
+bool loadModelFromFileAtIndex(int index){
+  if(!LittleFS.exists("/models/index/"+String(index)+"/model.json")){
+    Serial.println("no model file");
+    return false;
+  }
+  File modelFile = LittleFS.open("/models/index/"+String(index)+"/model.json", "r");
+  JsonDocument modelDoc;
+  deserializeJson(modelDoc, modelFile);
+  modelFile.close();
+  uint8_t protocol = modelDoc["protocol"];
+  Serial.print("loading protocol:");
+  Serial.println(protocol);
+  uint8_t subprotocol = modelDoc["subprotocol"] | 0;
+  Serial.print("loading subprotocol:");
+  Serial.println(subprotocol);
+  setProtocolMode(&streamOut, protocol, subprotocol);
+  char port = (char)modelDoc["port"].as<unsigned char>() | 'A';
+  Serial.print("loading usb port:");
+  Serial.println(port);
+  requested_usb_port = port;
+  return true;
+}
+
+
+
 
 /*note that protocol and subProtocol names are inconsistient in documentation, and thus some of the struct names may be confusing.
 In the multi-module docs,
