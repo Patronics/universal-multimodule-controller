@@ -291,7 +291,7 @@ char * last_n( const char *s, size_t n )
 }
 
 //helpful as fuzzy input name match, prefer exact match (such as "8Bitdo Pro2-LX"), but enable fuzzy match "OtherBrand-LX"
-InputChannelDescriptor *FindInputChannelDescriptorByInputNameSuffix(InputDescriptorPool *pool, char *inputName, int suffixLength){
+InputChannelDescriptor *FindInputChannelDescriptorByInputNameSuffix(InputDescriptorPool *pool, const char *inputName, int suffixLength){
   char *compareSuffix = last_n(inputName, suffixLength);
   int inputIndex  = Pool_FindNextUsedIndex(pool, 0);
   while(inputIndex != -1){

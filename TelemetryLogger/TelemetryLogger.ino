@@ -908,6 +908,19 @@ void saveModelToFileAtIndex(int index){
   newModelDoc["protocol"] = currentActiveProtocol;
   newModelDoc["subprotocol"] = currentActiveSubProtocol;
   newModelDoc["port"] = (unsigned char)active_usb_port;
+  JsonArray channelsArray = newModelDoc["channels"].to<JsonArray>();
+  for(int i=0; i<MAX_CHANNELS; i++){
+    JsonDocument channelObj;
+    InputChannelDescriptor *inputChannel = outChannels[i].inputChannelDescriptor;
+    int channelTypeEnumVal = int(inputChannel->inputFunctionType);
+    channelObj["type"]=channelTypeEnumVal;
+    channelObj["name"] = inputChannel->name; //mostly used for usb device fuzzy matching
+    channelObj["id"] = inputChannel->id;
+    channelObj["minRange"] = outChannels[i].minRange;
+    channelObj["maxRange"] = outChannels[i].maxRange;
+    channelsArray[i]=channelObj;
+  }
+  serializeJson(newModelDoc, Serial); //print json to USB Serial log
   serializeJson(newModelDoc, newModelFile);
   newModelFile.close();
 }
@@ -921,6 +934,7 @@ bool loadModelFromFileAtIndex(int index){
   JsonDocument modelDoc;
   deserializeJson(modelDoc, modelFile);
   modelFile.close();
+  //serializeJson(modelDoc, Serial);  //print json to USB Serial log
   uint8_t protocol = modelDoc["protocol"];
   Serial.print("loading protocol:");
   Serial.println(protocol);
@@ -932,6 +946,44 @@ bool loadModelFromFileAtIndex(int index){
   Serial.print("loading usb port:");
   Serial.println(port);
   requested_usb_port = port;
+  Serial.print("loading channels");
+  JsonArray channelsArray = modelDoc["channels"];
+  //serializeJson(channelsArray, Serial);
+  if(channelsArray){
+    for(int i=0; i<MAX_CHANNELS; i++){
+      JsonObject channelObj = channelsArray[i];
+      Serial.print("\nloading channel: ");
+      Serial.println(i);
+      serializeJson(channelObj, Serial);
+      const char* channelName = channelObj["name"];
+      Serial.print(channelName);
+      int channelTypeEnumVal = channelObj["type"];
+      outChannels[i].minRange = channelObj["minRange"];
+      outChannels[i].maxRange = channelObj["maxRange"];
+      InputChannelDescriptor *matchingInputDescriptor;
+      if(channelTypeEnumVal == INPUT_FUNCTION_USB_GAMEPAD_STICK){ //allow fuzzy matching of USB gamepad inputs
+        matchingInputDescriptor = FindInputChannelDescriptorByInputNameSuffix(
+          &inChannelsPool, channelName, INPUT_NAME_LEN);
+        if(matchingInputDescriptor == NULL){
+          matchingInputDescriptor = FindInputChannelDescriptorByInputNameSuffix(
+            &inChannelsPool, channelName, 3); //fuzzy match last 3 chars eg. '-XY'
+        }
+        if(matchingInputDescriptor == NULL){ //still no USB matches, skip populating this channel
+          Serial.print("no USB matches found, skipping channel");
+          continue;
+        }
+      } else {  //all other input types
+        matchingInputDescriptor = Pool_FindByIdAndType(&inChannelsPool, channelObj["id"], channelObj["type"]);
+        if (matchingInputDescriptor == NULL){
+          Serial.print("No matching channel id and type found, skipping channel");
+          continue;
+        }
+      }
+      outChannels[i].inputChannelDescriptor=matchingInputDescriptor;
+    }
+  } else {
+    Serial.print("Warning, channels array invalid or not present");
+  }
   return true;
 }
 
