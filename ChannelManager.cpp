@@ -274,3 +274,32 @@ void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor
     }
   }
 }
+
+int ends_with(const char *str, const char *suffix) {
+  size_t str_len = strlen(str);
+  size_t suffix_len = strlen(suffix);
+
+  return (str_len >= suffix_len) &&
+         (!memcmp(str + str_len - suffix_len, suffix, suffix_len));
+}
+
+char * last_n( const char *s, size_t n )
+{
+    size_t length = strlen( s );
+
+    return ( char * )( length < n ? s : s + length - n );
+}
+
+//helpful as fuzzy input name match, prefer exact match (such as "8Bitdo Pro2-LX"), but enable fuzzy match "OtherBrand-LX"
+InputChannelDescriptor *FindInputChannelDescriptorByInputNameSuffix(InputDescriptorPool *pool, char *inputName, int suffixLength){
+  char *compareSuffix = last_n(inputName, suffixLength);
+  int inputIndex  = Pool_FindNextUsedIndex(pool, 0);
+  while(inputIndex != -1){
+    InputChannelDescriptor * inputChannel = &(pool->items[inputIndex]);
+    if(ends_with(inputChannel->name, compareSuffix)){
+      return inputChannel;
+    }
+    inputIndex = Pool_FindNextUsedIndex(pool, inputIndex+1);
+  }
+  return NULL;
+}
