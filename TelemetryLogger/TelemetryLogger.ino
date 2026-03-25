@@ -1385,7 +1385,7 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
   USBInputDeviceDescriptor* descriptor = findUSBDescriptorByDevAddrAndInstance(USBDeviceDescriptors, dev_addr, instance);
   if(descriptor != NULL){
     descriptor -> vid = 0; //mark this descriptor as unused
-    releaseUSBInputChannels(&inChannelsPool, descriptor);
+    releaseUSBInputChannels(&inChannelsPool, descriptor, outChannels);
   } else {
     Serial.print("Warning: unmounted device does not appear to have descriptor, check for erroneous logic");
   }
@@ -1442,6 +1442,7 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
     Serial.print("report:");
     printBytesAsHex((char *)report, len);
     if(len!=thisDevice->layoutDef->reportLength){
+      //TODO: optionally recognize and handle double-packets, such as captured "report:03 0F 00 A9 7F 7F 00 00 00 00 28 03 0F 00 A9 7F 7F 00 00 00 00 28 -- report len = 22 NOT 11, not matching configured gamepad!"
       Serial.printf("report len = %u NOT %u, not matching configured gamepad!\r\n", len, thisDevice->layoutDef->reportLength);
     } else {
       handle_gamepad_input(thisDevice, report, len);

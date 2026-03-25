@@ -187,6 +187,7 @@ void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *output
     return;
   }
   assert(numChannels >= 0 && numChannels <= MAX_CHANNELS);
+  //build full list of default channels
   for (int i=0; i < numChannels; i++){
     OutputChannelDescriptor *p = &outputChannels[i];  //get pointer to specific output channel
     char buf[INPUT_NAME_LEN];
@@ -264,9 +265,16 @@ int getFirstFreeUSBInputDescriptorIndex(USBInputDeviceDescriptor* arr){
   return -1;
 }
 
-void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc){
+void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc, OutputChannelDescriptor* outChannelsArr){
+  Serial.print("Freeing USB INPUT");
   for(int i=0; i < MAX_INPUT_CHANNELS_PER_USB_DEVICE; i++){
     if(desc -> inputChannels[i] != NULL){
+      //clean-up any outputs based on this input channel, restore them to default state
+      for(int j=0; j< MAX_CHANNELS; j++){
+        if(outChannelsArr[j].inputChannelDescriptor == desc -> inputChannels[i]){
+          outChannelsArr[j].inputChannelDescriptor = Pool_FindByIdAndType(pool, j, INPUT_FUNCTION_CONFIG_VALUE);
+        }
+      }
       if (desc -> inputChannels[i] -> cleanupInputContextFn != NULL){
         desc -> inputChannels[i] -> cleanupInputContextFn(desc -> inputChannels[i]->context, desc -> inputChannels[i]->inputFunctionType);
       }

@@ -141,7 +141,7 @@ void assignInputChannelDescriptor(OutputChannelDescriptor *outputChannel, InputC
 int defaultInputDataProducer(void* context, int id);
 int fixedInputDataProducer(void* context, int id);
 int getFirstFreeUSBInputDescriptorIndex(USBInputDeviceDescriptor* arr);
-void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc);
+void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc, OutputChannelDescriptor *outChannelsArr);
 USBInputDeviceDescriptor* findUSBDescriptorByDevAddrAndInstance(USBInputDeviceDescriptor* arr, uint8_t dev_addr, uint8_t instance);
 InputChannelDescriptor *AllocateUSBKeyboardNumberInputChannel(InputDescriptorPool *pool, int id, const char* name, USBInputDeviceDescriptor * descriptor);
 USBGamepadContextType* AllocateUSBGamepadStickChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor * descriptor);
