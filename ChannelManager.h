@@ -13,6 +13,7 @@
 #define MAX_INPUTS 128
 //15 characters plus null-termination
 #define INPUT_NAME_LEN 16
+#define MIXER_NAME_LEN 16
 #define OUTPUT_NAME_LEN 16
 
 #define MAX_USB_DEVICE_DESCRIPTORS 8
@@ -33,6 +34,7 @@ typedef enum {
     INPUT_FUNCTION_IR_SWITCH,     //boolean value from IR remote          //todo implement/precisely define
     INPUT_FUNCTION_USB_KB_NUMBER, //number 0-9 from USB keyboard
     INPUT_FUNCTION_USB_GAMEPAD_STICK, //analog stick, or other 1-byte values in USB report array
+    INPUT_FUNCTION_MIXER,             //internal mixer 'virtual input'
     INPUT_FUNCTION_UNKNOWN,
 } InputFunctionType;
 
@@ -63,6 +65,31 @@ typedef struct {
     int capacity;
     int count;
 } InputDescriptorPool;
+
+
+typedef enum {
+    MIXER_OP_CH1_ONLY,    //ignore Channel2, only process channel 1 mix
+    MIXER_OP_ADD,
+    //MIXER_OP_SUB,  //unneded, use MIXER_OPERATION_ADD with inverted value
+    MIXER_OP_MUL,    //multiply values
+    MIXER_OP_DIV,    //divide Channel1 by Channel2
+    MIXER_OP_MIN,    //useful for lock-out switch
+    MIXER_OP_MAX,
+    MIXER_OP_RESERVED //reserved for future use
+} MixerCombineOperation;
+
+typedef struct {
+    InputChannelDescriptor *inputChannel1Descriptor;
+    int channel1Offset;
+    float channel1Scale;
+    bool channel1Invert;
+    InputChannelDescriptor *inputChannel2Descriptor;
+    int channel2Offset;
+    float channel2Scale;
+    bool channel2Invert;
+    char name[MIXER_NAME_LEN];
+} MixerChannelDescriptor; //short, NULL-terminated ASCII name
+
 
 typedef struct {
     InputChannelDescriptor *inputChannelDescriptor; // Pointer to input channel descriptor
