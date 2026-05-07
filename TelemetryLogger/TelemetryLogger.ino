@@ -70,11 +70,12 @@ OutputChannelDescriptor outChannels[MAX_CHANNELS]; //declare 16 item OutputChann
 InputDescriptorPool inChannelsPool;
 
 
-#define USE_I2C_DISPLAY
+//#define USE_I2C_DISPLAY
+#define USE_SPI_DISPLAY
 
 #ifdef USE_I2C_DISPLAY
-  //setup i2c display
-  U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+  //setup i2c display (used in pre-release hardware)
+  //U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
   #define I2C_DISPLAY_SDA_PIN 4
   #define I2C_DISPLAY_SCL_PIN 5
 #endif
@@ -85,6 +86,9 @@ InputDescriptorPool inChannelsPool;
   #define SPI_DISPLAY_CS_PIN 1
   #define SPI_DISPLAY_CLK_PIN 2
   #define SPI_DISPLAY_TX_PIN 3
+
+  U8G2_SSD1309_128X64_NONAME0_F_4W_HW_SPI u8g2(U8G2_R0, SPI_DISPLAY_CS_PIN,SPI_DISPLAY_DC_PIN, SPI_DISPLAY_RST_PIN);
+
   //todo: add U8G2 init for chosen SPI display
 #endif
 
@@ -193,6 +197,15 @@ void setup() {
   #ifdef USE_I2C_DISPLAY
     Wire.setSDA(I2C_DISPLAY_SDA_PIN);
     Wire.setSCL(I2C_DISPLAY_SCL_PIN);
+  #endif
+  #ifdef USE_SPI_DISPLAY
+    SPI.setRX(NOPIN);
+    SPI.setTX(SPI_DISPLAY_TX_PIN);
+    SPI.setSCK(SPI_DISPLAY_CLK_PIN);
+    SPI.setCS(SPI_DISPLAY_CS_PIN);
+    //u8g2.setBusClock(1000000); //1Mhz, fallback value if insufficient power smoothing present
+      u8g2.setBusClock(8000000); //8Mhz
+
   #endif
   u8g2.begin();
   u8g2.setFont(u8g2_font_tom_thumb_4x6_mf);

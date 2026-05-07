@@ -395,7 +395,12 @@
 // End of constructor list
 
 
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+U8G2_SSD1309_128X64_NONAME0_F_4W_HW_SPI u8g2(U8G2_R0, 1,4, 5);
+//U8G2_SSD1309_128X64_NONAME0_F_4W_SW_SPI u8g2(U8G2_R0, 2, 3, 1, 4, 5);
+
+//U8G2_SSD1309_128X64_NONAME2_F_4W_SW_SPI u8g2(U8G2_R0, 2, 3, 1, 4, 5);
+
+//U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
 
 void u8g2_prepare(void) {
@@ -595,8 +600,12 @@ void draw(void) {
 
 
 void setup(void) {
-  Wire.setSDA(4);
-  Wire.setSCL(5);
+  //Wire.setSDA(4);
+  //Wire.setSCL(5);
+  SPI.setRX(NOPIN);
+  SPI.setTX(3);
+  SPI.setSCK(2);
+  SPI.setCS(1);
   u8g2.begin();
 }
 
