@@ -21959,7 +21959,7 @@
 			(justify left bottom)
 		)
 	)
-	(gr_text "1.0"
+	(gr_text "1.1"
 		(at 92.8 150.8 0)
 		(layer "F.SilkS")
 		(uuid "e1223feb-3098-4687-ba77-a7bda0baac92")
@@ -22363,7 +22363,7 @@
 			(justify mirror)
 		)
 	)
-	(gr_text "V1.0      2025-2026"
+	(gr_text "V1.1      2025-2026"
 		(at 89.1 152.7 0)
 		(layer "B.SilkS")
 		(uuid "1b5f096d-8383-4bd4-9e4b-dc257a355df2")
