@@ -395,13 +395,23 @@
 // End of constructor list
 
 
-U8G2_SSD1309_128X64_NONAME0_F_4W_HW_SPI u8g2(U8G2_R0, 1,4, 5);
-//U8G2_SSD1309_128X64_NONAME0_F_4W_SW_SPI u8g2(U8G2_R0, 2, 3, 1, 4, 5);
+//U8G2_SSD1309_128X64_NONAME0_F_4W_HW_SPI u8g2(U8G2_R0, 1,4, 5);
+//U8G2_SSD1309_128X64_NONAME0_F_4W_SW_SPI u8g2(U8G2_R0, 44, 46, 42, 40, 38);
 
 //U8G2_SSD1309_128X64_NONAME2_F_4W_SW_SPI u8g2(U8G2_R0, 2, 3, 1, 4, 5);
 
 //U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
+#define USE_HW_2ND_SPI_DISPLAY
+#ifdef USE_HW_2ND_SPI_DISPLAY
+  #define SPI_DISPLAY_RST_PIN 46
+  #define SPI_DISPLAY_DC_PIN 44
+  #define SPI_DISPLAY_CS_PIN 37
+  #define SPI_DISPLAY_CLK_PIN 34
+  #define SPI_DISPLAY_TX_PIN 35
+  U8G2_SSD1309_128X64_NONAME0_F_4W_HW_SPI u8g2(U8G2_R0, SPI_DISPLAY_CS_PIN,SPI_DISPLAY_DC_PIN, SPI_DISPLAY_RST_PIN);
+
+#endif
 
 void u8g2_prepare(void) {
   u8g2.setFont(u8g2_font_6x10_tf);
@@ -602,10 +612,18 @@ void draw(void) {
 void setup(void) {
   //Wire.setSDA(4);
   //Wire.setSCL(5);
-  SPI.setRX(NOPIN);
+  //u8g2.setBusClock(10000);
+  /*SPI.setRX(NOPIN);
   SPI.setTX(3);
   SPI.setSCK(2);
-  SPI.setCS(1);
+  SPI.setCS(1);*/
+  #ifdef USE_HW_2ND_SPI_DISPLAY
+    SPI.setRX(NOPIN);
+    SPI.setTX(SPI_DISPLAY_TX_PIN);
+    SPI.setSCK(SPI_DISPLAY_CLK_PIN);
+    SPI.setCS(SPI_DISPLAY_CS_PIN);
+    u8g2.setBusClock(8000000); //4Mhz
+  #endif
   u8g2.begin();
 }
 
@@ -621,6 +639,6 @@ void loop(void) {
     draw_state = 0;
 
   // delay between each page
-  delay(100);
+  //delay(100);
 
 }

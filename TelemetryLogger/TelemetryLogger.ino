@@ -71,25 +71,50 @@ InputDescriptorPool inChannelsPool;
 
 
 //#define USE_I2C_DISPLAY
-#define USE_SPI_DISPLAY
+//#define USE_PRIMARY_SPI_DISPLAY
+//#define USE_SW_2ND_SPI_DISPLAY
+#define USE_HW_2ND_SPI_DISPLAY
 
+//setup i2c display (used in pre-release hardware, slower than SPI display interfaces)
 #ifdef USE_I2C_DISPLAY
-  //setup i2c display (used in pre-release hardware)
   //U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
   #define I2C_DISPLAY_SDA_PIN 4
   #define I2C_DISPLAY_SCL_PIN 5
 #endif
 
-#ifdef USE_SPI_DISPLAY
+//the primary intended display interface
+//for PCB 1.0, the display's VCC pin connection to VBUS MUST be bypassed, instead connect display's VCC to 3V3
+#ifdef USE_PRIMARY_SPI_DISPLAY
+  #define USE_HW_SPI_DISPLAY
   #define SPI_DISPLAY_RST_PIN 5
   #define SPI_DISPLAY_DC_PIN 4
   #define SPI_DISPLAY_CS_PIN 1
   #define SPI_DISPLAY_CLK_PIN 2
   #define SPI_DISPLAY_TX_PIN 3
-
   U8G2_SSD1309_128X64_NONAME0_F_4W_HW_SPI u8g2(U8G2_R0, SPI_DISPLAY_CS_PIN,SPI_DISPLAY_DC_PIN, SPI_DISPLAY_RST_PIN);
 
-  //todo: add U8G2 init for chosen SPI display
+#endif
+
+//convenient pinout for using display with GPIO header pins 3v3, gnd, and GPIO 46, 44, 42, 40, 38
+//software-spi only so limited to 300khz clock rate
+#ifdef USE_SW_2ND_SPI_DISPLAY
+  #define SPI_DISPLAY_RST_PIN 38
+  #define SPI_DISPLAY_DC_PIN 40
+  #define SPI_DISPLAY_CS_PIN 42
+  #define SPI_DISPLAY_CLK_PIN 44
+  #define SPI_DISPLAY_TX_PIN 46
+  U8G2_SSD1309_128X64_NONAME0_F_4W_SW_SPI u8g2(U8G2_R0, SPI_DISPLAY_CLK_PIN, SPI_DISPLAY_TX_PIN, SPI_DISPLAY_CS_PIN,SPI_DISPLAY_DC_PIN, SPI_DISPLAY_RST_PIN);
+#endif
+
+//use the gpio header pins with hardware SPI, improved performance over USE_SW_2ND_SPI_DISPLAY, but more complex pin layout
+#ifdef USE_HW_2ND_SPI_DISPLAY
+  #define USE_HW_SPI_DISPLAY
+  #define SPI_DISPLAY_RST_PIN 46
+  #define SPI_DISPLAY_DC_PIN 44
+  #define SPI_DISPLAY_CS_PIN 37
+  #define SPI_DISPLAY_CLK_PIN 34
+  #define SPI_DISPLAY_TX_PIN 35
+  U8G2_SSD1309_128X64_NONAME0_F_4W_HW_SPI u8g2(U8G2_R0, SPI_DISPLAY_CS_PIN,SPI_DISPLAY_DC_PIN, SPI_DISPLAY_RST_PIN);
 #endif
 
 #define LED_PIN 33
@@ -198,15 +223,21 @@ void setup() {
     Wire.setSDA(I2C_DISPLAY_SDA_PIN);
     Wire.setSCL(I2C_DISPLAY_SCL_PIN);
   #endif
-  #ifdef USE_SPI_DISPLAY
+  //setup SPI pins for display
+  #ifdef USE_HW_SPI_DISPLAY
     SPI.setRX(NOPIN);
     SPI.setTX(SPI_DISPLAY_TX_PIN);
     SPI.setSCK(SPI_DISPLAY_CLK_PIN);
     SPI.setCS(SPI_DISPLAY_CS_PIN);
-    //u8g2.setBusClock(1000000); //1Mhz, fallback value if insufficient power smoothing present
-      u8g2.setBusClock(8000000); //8Mhz
-
+    //u8g2.setBusClock(1000000); //1Mhz, fallback value for debugging
+    u8g2.setBusClock(8000000); //8Mhz
   #endif
+  //otherwise use software SPI display, not setup required:
+  /*#ifdef USE_SW_2ND_SPI_DISPLAY
+    bit-banged SPI does not support setBusClock configuration
+    it runs at around 300kHz in my testing
+  #endif*/
+ 
   u8g2.begin();
   u8g2.setFont(u8g2_font_tom_thumb_4x6_mf);
 
@@ -440,7 +471,7 @@ void redrawMenu(int selectedMenuItem, int activeMenuItem) {
     drawMenuItem(menuItems[menuNumber].label, menuNumber, selectedMenuItem, activeMenuItem);
   }
   u8g2.setDrawColor(1);
-  u8g2.drawHLine(3, 44, DISPLAY_PIXEL_WIDTH);
+  u8g2.drawHLine(0, 44, DISPLAY_PIXEL_WIDTH);
   u8g2.sendBuffer();
 }
 
@@ -494,13 +525,13 @@ void setupMenuLayout(){
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
 
-  strlcpy(menuItems[menuNumber].label, "Channel Map", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = channelMapMenuItemHandler;
+  strlcpy(menuItems[menuNumber].label, "Protocol", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = protocolSelectMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
 
-  strlcpy(menuItems[menuNumber].label, "Protocol", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = protocolSelectMenuItemHandler;
+  strlcpy(menuItems[menuNumber].label, "Channel Map", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = channelMapMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
 
@@ -509,18 +540,13 @@ void setupMenuLayout(){
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
 
+  strlcpy(menuItems[menuNumber].label, "Mixes", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = mixerMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+
   strlcpy(menuItems[menuNumber].label, "Recv select", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = receiverSelectMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber;
-  menuNumber++;
-
-  strlcpy(menuItems[menuNumber].label, "Channel Range", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
-  menuItems[menuNumber].index = menuNumber;
-  menuNumber++;
-
-  strlcpy(menuItems[menuNumber].label, "Values", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
 
@@ -529,6 +555,13 @@ void setupMenuLayout(){
   menuItems[menuNumber].index = menuNumber;
   menuNumber++;
 
+  /*
+  //feature replaced by mixer
+  strlcpy(menuItems[menuNumber].label, "Values", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].index = menuNumber;
+  menuNumber++;
+  */
 
 //////// system-menu items
   menuItems = sysMenu;
@@ -854,6 +887,45 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
   else if (btnPressed == BACK_BUTTON){
     menuSubpageIndex=0;
     clearMenuContents();
+  }
+}
+
+void mixerMenuItemHandler(int index, NavButton btnPressed){
+  bool updated = false;
+  if (btnPressed == LEFT_BUTTON){
+  } else if (btnPressed == RIGHT_BUTTON){
+  } else if (btnPressed == UP_BUTTON){
+  } else if (btnPressed == DOWN_BUTTON){
+  } else if( btnPressed == OK_BUTTON){
+    updated=true;
+  } else if (btnPressed == BACK_BUTTON){
+    clearMenuContents();
+  }
+  if(updated){
+    u8g2.setCursor(0,50);
+    u8g2.setDrawColor(0); //hightlight currently selected value
+    //sample values for formatting
+    u8g2.print(" Mix 0:");
+    u8g2.setCursor(30,50);
+    u8g2.print(" A: 8_2 ");
+    u8g2.setDrawColor(1); //clear highlight
+    u8g2.setCursor(70,50);
+    u8g2.print("B: 2_41 ");
+    u8g2.setCursor(100,50);
+    u8g2.print("OP:ADD");
+
+    u8g2.setCursor(0, 56);
+    u8g2.print("\"Dualsense 5-LY\"");
+    u8g2.setCursor(64, 56);
+    u8g2.print(" L/R: Edit mode");
+    u8g2.setCursor(0, 62);
+    u8g2.print("Scale:100");
+    u8g2.print(" ");
+    u8g2.setDrawColor(0);
+    u8g2.print("Invert:No");
+    u8g2.setDrawColor(1);
+    u8g2.print(" ");
+    u8g2.print("Offset:0");
   }
 }
 
