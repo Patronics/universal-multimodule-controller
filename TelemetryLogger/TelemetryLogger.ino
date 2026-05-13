@@ -150,6 +150,7 @@ int currentMenu = -1;
 const int CURRENT_MENU_NONE = -1;
 
 int menuSubpageIndex = 0;  //for arbitrary use by sub-menu logic, should be reset to zero on exit from submenu
+int menuUpdateCycleCount =0; //counter to update menu periodically if needed
 
 menuItem sysMenu[MENU_ITEM_COUNT];
 menuItem mdlMenu[MENU_ITEM_COUNT];
@@ -380,8 +381,14 @@ void loop() {
     currentNavButton = NO_BUTTON_PRESSED;
   }
   if(currentNavButton){   //NO_BUTTON_PRESSED is falsy
+    menuUpdateCycleCount = 0;
     handleNavButton(currentNavButton);
 
+  } else if(currentMenu >= 0 && menuItems[currentMenu].update_period_cycles){  //if a submenu active and the submenu requests periodic updates
+    menuUpdateCycleCount++;
+    if (menuUpdateCycleCount >= menuItems[currentMenu].update_period_cycles){
+      handleNavButton(NO_BUTTON_PRESSED);
+    }
   }
 
   getTelemetry();
@@ -542,36 +549,43 @@ void setupMenuLayout(){
   strlcpy(menuItems[menuNumber].label, "Load/Save mdl", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = modelSaveLoadMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "Protocol", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = protocolSelectMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 50; //infrequent updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "Channel Map", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = channelMapMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 10; //frequent updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "Sub-protocol", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = subProtocolSelectMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 50; //infrequent updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "Mixes", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = mixerMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "Recv select", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = receiverSelectMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "Failsafe Value", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   /*
@@ -589,41 +603,49 @@ void setupMenuLayout(){
   strlcpy(menuItems[menuNumber].label, "TX Active", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = activateTxMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "USB Port", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = usbPortSelectMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 2
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 3
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 4
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 5
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 6
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 7
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
   // strlcpy(menuItems[menuNumber].label, "Optn-protocol", MENU_ITEM_LABEL_SIZE);
@@ -636,7 +658,7 @@ void setupMenuLayout(){
 
 
 // ------- menu item handlers ------
-//Menu items are permitted to draw anywhere within the region x>25 (expanded from previous region of x>45).
+//Menu items are permitted to draw anywhere within the region x>25 (so setCursor of 0, 32 for prints) (expanded from previous region of x>45).
 //TODO: adjust menuItemHandlers to use a context pointer instead of the global menuSubpageIndex for tracking more flexible context
 void unimplementedMenuItemHandler(int index, NavButton btnPressed){
   if (btnPressed == BACK_BUTTON){ //cleanup
@@ -722,18 +744,29 @@ void protocolSelectMenuItemHandler(int index, NavButton btnPressed){
     updated=true;
     setProtocolMode(&streamOut,moduleStatus.next_protocol, 0);
   }
-  if(updated || btnPressed == OK_BUTTON){
-    u8g2.setCursor(0,50);
+  else if (btnPressed == NO_BUTTON_PRESSED || btnPressed == OK_BUTTON){  //periodic update or ok button to request update
+    updated=true;
+  }
+  if(updated){
+    u8g2.setCursor(0,32);
     u8g2.setDrawColor(0); //hightlight currently selected value
+    u8g2PrintPadding();
     u8g2.print("Current: ");
     u8g2PrintStrWithMaxLength( moduleStatus.protocol_name, sizeof(moduleStatus.protocol_name));
     u8g2.setDrawColor(1);
-    u8g2.setCursor(0, 56);
-    u8g2.print("Left: ");
+    u8g2.print("  (");
+    u8g2.print(currentActiveProtocol);
+    u8g2.print(") ");
+    u8g2.setDrawColor(1);
+    u8g2.setCursor(0, 42);
+    u8g2.print("Left: (");
     u8g2.print(moduleStatus.prev_protocol);
-    u8g2.setCursor(DISPLAY_PIXEL_WIDTH/2, 56);
-    u8g2.print("Right: ");
+    u8g2.print(") ");
+    //TODO: optionally get name of adjacent protocols to show in addition to protocol numbers.
+    u8g2.setCursor(0, 52);
+    u8g2.print("Right: (");
     u8g2.print(moduleStatus.next_protocol);
+    u8g2.print(") ");
     if(!transmitActive){
       u8g2.setCursor(0,63);
       u8g2.print("tip: enable tx to see live data");
@@ -757,12 +790,18 @@ void subProtocolSelectMenuItemHandler(int index, NavButton btnPressed){
       setProtocolMode(&streamOut, currentActiveProtocol,currentActiveSubProtocol+1);
     }
   }
-  if(updated || btnPressed == OK_BUTTON){
+  else if (btnPressed == NO_BUTTON_PRESSED || btnPressed == OK_BUTTON){  //periodic update or ok button to request update
+    updated=true;
+  }
+  if(updated){
     u8g2.setCursor(0,50);
     u8g2.setDrawColor(0); //hightlight currently selected value
     u8g2.print("Current: ");
     u8g2PrintStrWithMaxLength( moduleStatus.sub_protocol_name, sizeof(moduleStatus.sub_protocol_name));
     u8g2.setDrawColor(1);
+    u8g2.print("  (");
+    u8g2.print(currentActiveSubProtocol);
+    u8g2.print(") ");
     u8g2.setCursor(0, 56);
     u8g2.print("Left: ");
     if(currentActiveSubProtocol > 0){
@@ -868,17 +907,16 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
       menuSubpageIndex = MAX_CHANNELS-1;
     }
   }
-  //note: currently menu renderers are not called during NO_BUTTON_PRESSED states, so the following logic would never run. If revised to run intermittently, this allows smoother refresh
-  /*else if (btnPressed == NO_BUTTON_PRESSED){  //no complete refresh needed, but live value may have changed, so redraw that portion
+  else if (btnPressed == NO_BUTTON_PRESSED){  //periodic refresh: no complete refresh needed, but live value may have changed, so redraw that portion
     InputChannelDescriptor* currentInputDescriptor = outChannels[menuSubpageIndex].inputChannelDescriptor;
     u8g2.setCursor(0,56);
     u8g2.print("value: '");
     u8g2.print(currentInputDescriptor->getLatestInputData(currentInputDescriptor->context, currentInputDescriptor->id));
     u8g2.print("' from:    ");
-  }*/
+  }
   if (updated || btnPressed == OK_BUTTON){
     InputChannelDescriptor* currentInputDescriptor = outChannels[menuSubpageIndex].inputChannelDescriptor;
-    u8g2.setCursor(0,50);
+    u8g2.setCursor(0,32);
     u8g2.print("output ch");
     u8g2.setDrawColor(0);
     u8g2.print(" ");

@@ -36,6 +36,7 @@ typedef struct {
   char label[MENU_ITEM_LABEL_SIZE];
   MenuItemHandlerPtr buttonHandler;
   int index;  //index number in menu
+  int update_period_cycles; //if the menu should be updated periodically, update every one in how many cycles? Zero to only update on button press.
 } menuItem;
 
 void printStructWithLenAsHex(void* ptr, size_t length);
