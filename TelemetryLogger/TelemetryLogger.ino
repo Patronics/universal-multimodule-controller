@@ -71,9 +71,9 @@ InputDescriptorPool inChannelsPool;
 
 
 //#define USE_I2C_DISPLAY
-//#define USE_PRIMARY_SPI_DISPLAY
+#define USE_PRIMARY_SPI_DISPLAY
 //#define USE_SW_2ND_SPI_DISPLAY
-#define USE_HW_2ND_SPI_DISPLAY
+//#define USE_HW_2ND_SPI_DISPLAY
 
 //setup i2c display (used in pre-release hardware, slower than SPI display interfaces)
 #ifdef USE_I2C_DISPLAY
@@ -446,7 +446,7 @@ void transmit(MultiProtocolStream* s, uint8_t aditional_bytes){
 void drawMenuItem(const char* label, int thisPageIndex, int selectedMenu, int currentMenu) {
   //starting coordinates and movement pattern for menu items
   const int xOffset[] = {0, 64};
-  const int yOffsetStart = 25;
+  const int yOffsetStart = 22;
   const int ySpacing = CHAR_HEIGHT;
 
   u8g2.setCursor(xOffset[thisPageIndex % 2], (yOffsetStart + (thisPageIndex/2)*ySpacing));
@@ -465,14 +465,26 @@ void drawMenuItem(const char* label, int thisPageIndex, int selectedMenu, int cu
 };
 
 void redrawMenu(int selectedMenuItem, int activeMenuItem) {
+  u8g2.setDrawColor(1);
+  u8g2.drawHLine(0, 14, DISPLAY_PIXEL_WIDTH);  //line separating telemetry from menu
   u8g2.setDrawColor(0);
-  u8g2.drawBox(0, 20, DISPLAY_PIXEL_WIDTH, 24); //draw box over menu area, region 20<y<44
+  u8g2.drawBox(0, 15, DISPLAY_PIXEL_WIDTH, 29); //draw blank box over menu area, region 15<y<44
   for(int menuNumber = 0; menuNumber < MENU_ITEM_COUNT; menuNumber++){
     drawMenuItem(menuItems[menuNumber].label, menuNumber, selectedMenuItem, activeMenuItem);
   }
   u8g2.setDrawColor(1);
   u8g2.drawHLine(0, 44, DISPLAY_PIXEL_WIDTH);
   u8g2.sendBuffer();
+}
+
+void drawCompactMenu(int headingMenuItem) {
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(0, 15, DISPLAY_PIXEL_WIDTH, 30); //draw box over large menu area, region 15<y<45
+  u8g2.setDrawColor(1);
+  u8g2.drawHLine(0, 14, DISPLAY_PIXEL_WIDTH);  //line separating telemetry from menu
+  u8g2.setCursor(0,22);
+  u8g2.print(menuItems[headingMenuItem].label);
+  u8g2.drawHLine(0, 25, DISPLAY_PIXEL_WIDTH);  //line separating menu heading from submenu
 }
 
 void handleNavButton(NavButton btn){
@@ -487,6 +499,7 @@ void handleNavButton(NavButton btn){
     } else if(btn == RIGHT_BUTTON){
       selectedMenu += 1;
     } else if(btn == OK_BUTTON){
+      drawCompactMenu(selectedMenu);
       currentMenu = selectedMenu;
     }
     if(selectedMenu < 0){
@@ -504,9 +517,15 @@ void handleNavButton(NavButton btn){
   if (btn == BACK_BUTTON){
     currentMenu = -1;
   }
-  
-  redrawMenu(selectedMenu, currentMenu);
+  if(currentMenu == -1){
+    //draw full menu, and update it for current selection
+    redrawMenu(selectedMenu, currentMenu);
+  } else {
+    //explicitly send buffer if not automatically doing so in redrawMenu()
+    u8g2.sendBuffer();
+  }
 }
+
 
 void clearMenuContents(){
     u8g2.setColorIndex(0); //erase
