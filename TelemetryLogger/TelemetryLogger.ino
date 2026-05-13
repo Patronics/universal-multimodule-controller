@@ -636,6 +636,7 @@ void setupMenuLayout(){
 
 
 // ------- menu item handlers ------
+//Menu items are permitted to draw anywhere within the region x>25 (expanded from previous region of x>45).
 //TODO: adjust menuItemHandlers to use a context pointer instead of the global menuSubpageIndex for tracking more flexible context
 void unimplementedMenuItemHandler(int index, NavButton btnPressed){
   if (btnPressed == BACK_BUTTON){ //cleanup
@@ -679,6 +680,7 @@ void activateTxMenuItemHandler(int index, NavButton btnPressed){
   }
 }
 
+
 void usbPortSelectMenuItemHandler(int index, NavButton btnPressed){
   bool updated=false;
   if (btnPressed == LEFT_BUTTON){
@@ -694,8 +696,9 @@ void usbPortSelectMenuItemHandler(int index, NavButton btnPressed){
     clearMenuContents();
   }
   if(updated || btnPressed == OK_BUTTON){
-    u8g2.setCursor(0,50);
+    u8g2.setCursor(0,32);
     u8g2.setDrawColor(0); //hightlight currently selected value
+    u8g2PrintPadding();
     u8g2.print("Current: ");
     u8g2.print(requested_usb_port);
     u8g2.setDrawColor(1);
@@ -1255,6 +1258,7 @@ void serialPrintStringWithMaxLength(const char* str, int length){
   Serial.write(str, actualLength);
 }
 
+
 //uses u8g2.drawStr with explicitly passed coordinates
 void u8g2DrawStrWithMaxLength(int x, int y, const char* str, const int length){
   if (length >= DISPLAY_STR_BUFFER_SIZE) {
@@ -1267,6 +1271,18 @@ void u8g2DrawStrWithMaxLength(int x, int y, const char* str, const int length){
   char buf[DISPLAY_STR_BUFFER_SIZE];
   strlcpy(buf, str, length+1);
   u8g2.drawStr(x,y,buf);
+}
+
+//print a 1 pixel wide by 1 char tall padding before/after a string (especially useful for cleaner text in inverted highlights)
+void u8g2PrintPadding(){
+  int8_t height = u8g2.getMaxCharHeight();
+  int8_t x = u8g2.getCursorX();
+  int8_t y = u8g2.getCursorY();
+  int8_t initialDrawColor = u8g2.getDrawColor();
+  u8g2.setDrawColor(!initialDrawColor);
+  u8g2.drawVLine(x, y-(height-1), height);
+  u8g2.setCursor(x+1, y);
+  u8g2.setDrawColor(initialDrawColor);
 }
 
 //uses u8g2.print, pads excess allocated space with whitespace
