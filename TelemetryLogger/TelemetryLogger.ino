@@ -377,7 +377,8 @@ void loop() {
   if (mdlButton.pressed()) {
     handleNavButton(BACK_BUTTON); //force exit active menu
     menuItems = mdlMenu;
-    redrawMenu(0, -1);
+    selectedMenu = 0;
+    redrawMenu(selectedMenu, CURRENT_MENU_NONE);
     currentNavButton = NO_BUTTON_PRESSED;
   }
   if(currentNavButton){   //NO_BUTTON_PRESSED is falsy
@@ -962,30 +963,35 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
     clearMenuContents();
   }
   if(updated){
-    u8g2.setCursor(0,50);
+    u8g2.drawVLine(64, 25, 39);
+    u8g2.setCursor(0,32);
     u8g2.setDrawColor(0); //hightlight currently selected value
     //sample values for formatting
     u8g2.print(" Mix 0:");
-    u8g2.setCursor(30,50);
+    u8g2.setCursor(100,32);
+    u8g2.setDrawColor(1);
+    u8g2.print("OP:ADD");
+    u8g2.setDrawColor(0);
+    u8g2.setCursor(30,32);
     u8g2.print(" A: 8_2 ");
     u8g2.setDrawColor(1); //clear highlight
-    u8g2.setCursor(70,50);
+    u8g2.setCursor(66,32);
     u8g2.print("B: 2_41 ");
-    u8g2.setCursor(100,50);
-    u8g2.print("OP:ADD");
-
-    u8g2.setCursor(0, 56);
+    u8g2.setCursor(0, 39);
     u8g2.print("\"Dualsense 5-LY\"");
-    u8g2.setCursor(64, 56);
-    u8g2.print(" L/R: Edit mode");
-    u8g2.setCursor(0, 62);
+    //u8g2.setCursor(64, 56);
+    //u8g2.print(" L/R: Edit mode");
+    u8g2.setCursor(0, 45);
     u8g2.print("Scale:100");
     u8g2.print(" ");
     u8g2.setDrawColor(0);
-    u8g2.print("Invert:No");
+    u8g2.setCursor(0,51);
+    u8g2.print("Invert:no");
     u8g2.setDrawColor(1);
     u8g2.print(" ");
+    u8g2.setCursor(0,58);
     u8g2.print("Offset:0");
+    u8g2.print(" ");
   }
 }
 
