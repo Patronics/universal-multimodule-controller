@@ -6,6 +6,17 @@
 #include "ChannelManager.h"
 #include "MultiModule.h"
 
+static int clamp(int v, int lo, int hi){
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+//use DataProducer to get latest input data
+int getLatestInputData(InputChannelDescriptor* input){
+  return input->getLatestInputData(input->context, input->id);
+}
+
 // Interpret context as an integer value stored via an integer-sized pointer.
 // always returns the value specified by its context directly
 // compatible with INPUT_FUNCTION_CONST_FIXED and INPUT_FUNCTION_CONFIG_VALUE input types
@@ -39,9 +50,76 @@ int USBGamepadAnalogDataProducer(void* context, int id){
   return usbGamepadContext->parentDeviceDescriptor->latest_report[id];
 }
 
+int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1){
+  if(channel1){
+    int channel1Value = getLatestInputData(mixer->inputChannel1Descriptor);
+    channel1Value = channel1Value * mixer->channel1Scale/100;
+    channel1Value = channel1Value + mixer->channel1Offset;
+    if(mixer->channel1Invert){
+      channel1Value = mixer->inputChannel1Descriptor->maxRange - channel1Value + mixer->inputChannel1Descriptor->minRange;
+    }
+    return channel1Value;
+  }
+  //else channel 2:
+  int channel2Value = getLatestInputData(mixer->inputChannel2Descriptor);
+  channel2Value = channel2Value * mixer->channel2Scale/100;
+  channel2Value = channel2Value + mixer->channel2Offset;
+  if(mixer->channel2Invert){
+    channel2Value = mixer->inputChannel2Descriptor->maxRange - channel2Value + mixer->inputChannel2Descriptor->minRange;
+  }
+  return channel2Value;
+}
+
+int evaluateMixerValue(MixerChannelDescriptor* mixer){
+  int channel1Value = evaluateSingleChannelMixerValue(mixer, true);
+  if(mixer->operation == MIXER_OP_CH1_ONLY){
+    clamp(channel1Value, mixer->mixerResultDescriptor->minRange, mixer->mixerResultDescriptor->maxRange);
+    return channel1Value;
+  }
+  //otherwise use both channel 1 and channel 2 values
+  int channel2Value = evaluateSingleChannelMixerValue(mixer, false);
+  int mixedValue;
+  switch (mixer->operation){
+    case MIXER_OP_ADD:
+      mixedValue = channel1Value + channel2Value;
+      break;
+    case MIXER_OP_SUB:
+      mixedValue = channel1Value - channel2Value;
+      break;
+    case MIXER_OP_DIFF:
+      mixedValue = abs(channel1Value - channel2Value);
+      break;
+    case MIXER_OP_MUL:
+      mixedValue = (channel1Value * channel2Value);
+      //normalize scale from min to max
+      mixedValue = mixedValue / mixer->mixerResultDescriptor->maxRange + mixer->mixerResultDescriptor->minRange;
+      break;
+    case MIXER_OP_DIV:
+      if(channel2Value == 0){
+        mixedValue = mixer->mixerResultDescriptor->maxRange; //div by zero -> max
+        break;
+      }
+      //denormal:
+      //mixedValue = channel1Value / channel2Value;
+      //normalize scale from min to max
+      mixedValue = (mixer->mixerResultDescriptor->maxRange * channel1Value) / channel2Value;
+      break;
+    case MIXER_OP_MIN:
+      mixedValue = (channel1Value < channel2Value) ? channel1Value : channel2Value;
+      break;
+    case MIXER_OP_MAX:
+      mixedValue = (channel1Value > channel2Value) ? channel1Value : channel2Value;
+      break;
+    default:
+      mixedValue = 1025; //near-center default value for invalid configurations
+  }
+  mixedValue = clamp(mixedValue, mixer->mixerResultDescriptor->minRange, mixer->mixerResultDescriptor->maxRange);
+  return mixedValue;
+}
+
 int mixerDataProducer(void* context, int id){
   //TODO: implement
-  return 127;
+  return evaluateMixerValue((MixerChannelDescriptor *)context);
 }
 
 const InputChannelDescriptor defaultInputDescriptor = {
@@ -207,12 +285,19 @@ void initDefaultInputDescriptors(InputDescriptorPool *pool){
 
 void initMixerInputDescriptors(InputDescriptorPool *inputChannelsPool, MixerChannelDescriptor *mixerChannels){
   for (int i=0; i<MAX_MIXERS; i++){
+    mixerChannels[i].id = i;
     mixerChannels[i].inputChannel1Descriptor = Pool_FindByIdAndType(inputChannelsPool, 0, INPUT_FUNCTION_CONST_FIXED);
     mixerChannels[i].inputChannel2Descriptor = Pool_FindByIdAndType(inputChannelsPool, 0, INPUT_FUNCTION_CONST_FIXED);
     mixerChannels[i].operation = MIXER_OP_ADD;
+    mixerChannels[i].channel1Scale = 100;
+    mixerChannels[i].channel2Scale = 100;
+    mixerChannels[i].channel1Offset = 0;
+    mixerChannels[i].channel2Offset = 0;
+    mixerChannels[i].channel1Invert = false;
+    mixerChannels[i].channel2Invert = false;
     snprintf(mixerChannels[i].name,INPUT_NAME_LEN, "Mix %d", i);
     //TODO: populate rest of mixerChannels[i]'s values
-    AllocDefaultMixerInput(inputChannelsPool, i, &mixerChannels[i]);
+    mixerChannels[i].mixerResultDescriptor = AllocDefaultMixerInput(inputChannelsPool, i, &mixerChannels[i]);
   }
 }
 

@@ -73,7 +73,8 @@ typedef struct {
 typedef enum {
     MIXER_OP_CH1_ONLY,    //ignore Channel2, only process channel 1 mix
     MIXER_OP_ADD,
-    //MIXER_OP_SUB,  //unneded, use MIXER_OPERATION_ADD with inverted value
+    MIXER_OP_DIFF,    //get absolute value of difference
+    MIXER_OP_SUB,  
     MIXER_OP_MUL,    //multiply values
     MIXER_OP_DIV,    //divide Channel1 by Channel2
     MIXER_OP_MIN,    //useful for lock-out switch
@@ -85,6 +86,8 @@ typedef enum {
 static const char* MixerCombineOperationString [] = {
     "Ch1",
     "ADD",
+    "DIFF",
+    "SUB",
     "MUL",
     "DIV",
     "MIN",
@@ -94,16 +97,18 @@ static const char* MixerCombineOperationString [] = {
  
 
 typedef struct {
+    int id;
     MixerCombineOperation operation;
     InputChannelDescriptor *inputChannel1Descriptor;
     int channel1Offset;
-    float channel1Scale;
+    int channel1Scale;  //scale as percentage
     bool channel1Invert;
     InputChannelDescriptor *inputChannel2Descriptor;
     int channel2Offset;
-    float channel2Scale;
+    int channel2Scale;  //scale as percentage
     bool channel2Invert;
     char name[MIXER_NAME_LEN];
+    InputChannelDescriptor *mixerResultDescriptor;
 } MixerChannelDescriptor; //short, NULL-terminated ASCII name
 
 typedef enum {
@@ -200,6 +205,8 @@ int Pool_FindPreviousUsedIndex(InputDescriptorPool *pool, int index);
 void initDefaultInputDescriptors(InputDescriptorPool *pool);
 void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelPool, MixerChannelDescriptor *mixerChannels);
 void assignInputChannelDescriptor(OutputChannelDescriptor *outputChannel, InputChannelDescriptor *inputChannel);
+int getLatestInputData(InputChannelDescriptor* input); //use DataProducer to get latest input data
+int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1);
 int defaultInputDataProducer(void* context, int id);
 int fixedInputDataProducer(void* context, int id);
 int getFirstFreeUSBInputDescriptorIndex(USBInputDeviceDescriptor* arr);

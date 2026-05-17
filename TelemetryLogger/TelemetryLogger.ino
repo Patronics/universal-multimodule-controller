@@ -418,7 +418,7 @@ void updateChannelValues(MultiProtocolStream* s){
   for(int i=0; i<MAX_CHANNELS; i++){
     OutputChannelDescriptor* outChannel = &outChannels[i];
     InputChannelDescriptor* inChannel = outChannel->inputChannelDescriptor;
-    int value = inChannel->getLatestInputData(inChannel->context, inChannel->id);
+    int value = getLatestInputData(inChannel);
     //scale values as needed
     if(inChannel->minRange != outChannel->minRange || inChannel->maxRange != outChannel->maxRange){
       int inMin = inChannel->minRange;
@@ -575,7 +575,7 @@ void setupMenuLayout(){
   strlcpy(menuItems[menuNumber].label, "Mixes", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = mixerMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
-  menuItems[menuNumber].update_period_cycles = 0; //no updates required
+  menuItems[menuNumber].update_period_cycles = 10; //frequent updates required
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "Recv select", MENU_ITEM_LABEL_SIZE);
@@ -913,7 +913,7 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
     InputChannelDescriptor* currentInputDescriptor = outChannels[menuSubpageIndex].inputChannelDescriptor;
     u8g2.setCursor(0,56);
     u8g2.print("value: '");
-    u8g2.print(currentInputDescriptor->getLatestInputData(currentInputDescriptor->context, currentInputDescriptor->id));
+    u8g2.print(getLatestInputData(currentInputDescriptor));
     u8g2.print("' from:    ");
   }
   if (updated || btnPressed == OK_BUTTON){
@@ -930,7 +930,7 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
     u8g2.print("\"                ");
     u8g2.setCursor(0,56);
     u8g2.print("value: '");
-    u8g2.print(currentInputDescriptor->getLatestInputData(currentInputDescriptor->context, currentInputDescriptor->id));
+    u8g2.print(getLatestInputData(currentInputDescriptor));
     u8g2.print("' from:    ");
     u8g2.setCursor(0,62);
     u8g2.print("input ch");
@@ -992,6 +992,7 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
     menuSubpageIndex=0;
     menuSubpageContext=NULL;
     clearMenuContents();
+    return;
   }
   if(valueShift){ //both -1 and 1 are truthy, handle left/right buttons
     switch (activeMixer->mixerActiveEditState){
@@ -1010,28 +1011,78 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
         break;
       case MIXER_EDIT_STATE_A_SOURCE:
       case MIXER_EDIT_STATE_B_SOURCE:
-        InputChannelDescriptor** activeInputChannelDescriptor; //double pointer to refer to either inputChannel1Descriptor or inputChannel2Descriptor
-        if(activeMixer->mixerActiveEditState == MIXER_EDIT_STATE_A_SOURCE){
-          activeInputChannelDescriptor = &(activeMixer->currentlyEditingMixer->inputChannel1Descriptor);
-        } else { //MIXER_EDIT_STATE_B_SOURCE
-          activeInputChannelDescriptor = &(activeMixer->currentlyEditingMixer->inputChannel2Descriptor);
+        {
+          InputChannelDescriptor** activeInputChannelDescriptor; //double pointer to refer to either inputChannel1Descriptor or inputChannel2Descriptor
+          if(activeMixer->mixerActiveEditState == MIXER_EDIT_STATE_A_SOURCE){
+            activeInputChannelDescriptor = &(activeMixer->currentlyEditingMixer->inputChannel1Descriptor);
+          } else { //MIXER_EDIT_STATE_B_SOURCE
+            activeInputChannelDescriptor = &(activeMixer->currentlyEditingMixer->inputChannel2Descriptor);
+          }
+          int channelInputIndex = Pool_FindIndexByIdAndType(&inChannelsPool, (*activeInputChannelDescriptor)->id, (*activeInputChannelDescriptor)->inputFunctionType);
+          int nextChannelIndex;
+          if(valueShift == 1){
+            nextChannelIndex = Pool_FindNextUsedIndex(&inChannelsPool, channelInputIndex+1);
+          } else {  //if valueShift == -1
+            nextChannelIndex = Pool_FindPreviousUsedIndex(&inChannelsPool, channelInputIndex-1);
+          }
+          if(nextChannelIndex != -1){ //verify valid channel present
+            InputChannelDescriptor** potentialNewChannelDescriptor;
+            (*potentialNewChannelDescriptor) = &(inChannelsPool.items[nextChannelIndex]);
+            //special case handling to avoid infinite mixer recursion: only allow reference to lower-numbered mixers
+            if((*potentialNewChannelDescriptor)->inputFunctionType == INPUT_FUNCTION_MIXER && (*potentialNewChannelDescriptor)->id >= activeMixer->currentlyEditingMixer->id){
+              if(valueShift == 1){
+                channelInputIndex = Pool_FindIndexByIdAndType(&inChannelsPool, MAX_MIXERS-1, INPUT_FUNCTION_MIXER);
+                nextChannelIndex = Pool_FindNextUsedIndex(&inChannelsPool, channelInputIndex+1);
+              } else { //valueshift ==-1
+                channelInputIndex = Pool_FindIndexByIdAndType(&inChannelsPool, activeMixer->currentlyEditingMixer->id, INPUT_FUNCTION_MIXER);
+                nextChannelIndex = Pool_FindPreviousUsedIndex(&inChannelsPool, channelInputIndex-1);
+              }
+            }
+            (*activeInputChannelDescriptor) = &(inChannelsPool.items[nextChannelIndex]);
+
+          }
+          break;
         }
-        int channelInputIndex = Pool_FindIndexByIdAndType(&inChannelsPool, (*activeInputChannelDescriptor)->id, (*activeInputChannelDescriptor)->inputFunctionType);
-        int nextChannelIndex;
-        if(valueShift == 1){
-          nextChannelIndex = Pool_FindNextUsedIndex(&inChannelsPool, channelInputIndex+1);
-        } else {  //if valueShift == -1
-          nextChannelIndex = Pool_FindPreviousUsedIndex(&inChannelsPool, channelInputIndex-1);
-        }
-        if(nextChannelIndex != -1){ //verify valid channel present
-          (*activeInputChannelDescriptor)=&(inChannelsPool.items[nextChannelIndex]);
-        }
+      case MIXER_EDIT_STATE_A_SCALE:
+      case MIXER_EDIT_STATE_B_SCALE:
+        {
+          int* activeMixerScale;
+          if(activeMixer->mixerActiveEditState == MIXER_EDIT_STATE_A_SCALE){
+            activeMixerScale = &activeMixer->currentlyEditingMixer->channel1Scale;
+          } else {
+            activeMixerScale = &activeMixer->currentlyEditingMixer->channel2Scale;
+          }
+          *activeMixerScale += valueShift;
         break;
+      }
+    case MIXER_EDIT_STATE_A_OFFSET:
+    case MIXER_EDIT_STATE_B_OFFSET:
+      {
+        int* activeMixerOffset;
+          if(activeMixer->mixerActiveEditState == MIXER_EDIT_STATE_A_OFFSET){
+            activeMixerOffset = &activeMixer->currentlyEditingMixer->channel1Offset;
+          } else {
+            activeMixerOffset = &activeMixer->currentlyEditingMixer->channel2Offset;
+          }
+          *activeMixerOffset += valueShift;
+        break;
+      }
+    case MIXER_EDIT_STATE_A_INVERT:
+    case MIXER_EDIT_STATE_B_INVERT:
+      {
+        bool* activeMixerInvert;
+        if(activeMixer->mixerActiveEditState == MIXER_EDIT_STATE_A_INVERT){
+          activeMixerInvert = &activeMixer->currentlyEditingMixer->channel1Invert;
+        } else {
+          activeMixerInvert = &activeMixer->currentlyEditingMixer->channel2Invert;
+        }
+        *activeMixerInvert = !*activeMixerInvert;
+      }
     }
   }
   if(updated){
     u8g2.setDrawColor(0);
-    u8g2.drawBox(0, 25, 128, 39);
+    u8g2.drawBox(0, 26, 128, 38);
     u8g2.setDrawColor(1);
     u8g2.drawVLine(64, 25, 39);
     u8g2.setCursor(0,32);
@@ -1053,22 +1104,28 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
     u8g2.print("_");
     u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->id, DEC);
     u8g2.setCursor(0, 39);
-    u8g2.setDrawColor(1);
     u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->name);
     //u8g2.print("\"Dualsense 5-LY\"");
     //u8g2.setCursor(64, 56);
     //u8g2.print(" L/R: Edit mode");
     u8g2.setCursor(0, 45);
     u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_SCALE);
-    u8g2.print("Scale:100");
+    u8g2.print("Scale:");
+    u8g2.print(activeMixer->currentlyEditingMixer->channel1Scale);
     u8g2.print(" ");
     u8g2.setCursor(0,51);
     u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_INVERT);
-    u8g2.print("Invert:no");
+    u8g2.print("Invert:");
     u8g2.print(" ");
+    if(activeMixer->currentlyEditingMixer->channel1Invert){
+      u8g2.print("yes ");
+    } else {
+      u8g2.print("no ");
+    }
     u8g2.setCursor(0,58);
     u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_OFFSET);
-    u8g2.print("Offset:0");
+    u8g2.print("Offset:");
+    u8g2.print(activeMixer->currentlyEditingMixer->channel1Offset);
     u8g2.print(" ");
     if(activeMixer->currentlyEditingMixer->operation != MIXER_OP_CH1_ONLY){
       u8g2.setCursor(66,32);
@@ -1079,13 +1136,39 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
       u8g2.print("_");
       u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->id, DEC);
       u8g2.setCursor(66, 39);
-      u8g2.setDrawColor(1);
       u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->name);
+      u8g2.setCursor(85, 45);
+      u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_SCALE);
+      u8g2.print("Scale:");
+      u8g2.print(activeMixer->currentlyEditingMixer->channel2Scale);
+      u8g2.print(" ");
+      u8g2.setCursor(85,51);
+      u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_INVERT);
+      u8g2.print("Invert:");
+      u8g2.print(" ");
+      if(activeMixer->currentlyEditingMixer->channel2Invert){
+        u8g2.print("yes ");
+      } else {
+        u8g2.print("no ");
+      }
+      u8g2.setCursor(85,58);
+      u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_OFFSET);
+      u8g2.print("Offset:");
+      u8g2.print(activeMixer->currentlyEditingMixer->channel2Offset);
+      u8g2.print(" ");
     }
-    u8g2.setDrawColor(1);
-    u8g2.setCursor(42,55);
-    u8g2.print("Value: 125");
-  }
+  } //end if(updated)
+  //update values in real-time even if no changes to menu
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(0, 58, 128, 8);
+  u8g2.setDrawColor(1);
+  u8g2.setCursor(42,63);
+  u8g2.print("Value: ");
+  u8g2.print(getLatestInputData(activeMixer->currentlyEditingMixer->mixerResultDescriptor));
+  u8g2.setCursor(2,63);
+  u8g2.print(evaluateSingleChannelMixerValue(activeMixer->currentlyEditingMixer, true));
+  u8g2.setCursor(95,63);
+  u8g2.print(evaluateSingleChannelMixerValue(activeMixer->currentlyEditingMixer, false));
 }
 
 void modelSaveLoadMenuItemHandler(int index, NavButton btnPressed){
