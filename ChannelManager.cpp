@@ -39,6 +39,11 @@ int USBGamepadAnalogDataProducer(void* context, int id){
   return usbGamepadContext->parentDeviceDescriptor->latest_report[id];
 }
 
+int mixerDataProducer(void* context, int id){
+  //TODO: implement
+  return 127;
+}
+
 const InputChannelDescriptor defaultInputDescriptor = {
     .getLatestInputData = defaultInputDataProducer,
     .configureChannelInput = NULL,
@@ -171,6 +176,20 @@ InputChannelDescriptor *AllocADCInput(InputDescriptorPool *pool, const char* nam
   return newInput;
 }
 
+InputChannelDescriptor *AllocDefaultMixerInput(InputDescriptorPool *pool, int mixerIndex, MixerChannelDescriptor * mixerChannel){
+  InputChannelDescriptor *newInput = Pool_Allocate(pool);
+  newInput->minRange = 0;
+  newInput->maxRange = 2047;
+  snprintf(newInput->name,INPUT_NAME_LEN, "Mix %d", mixerIndex);
+  newInput->inputFunctionType = INPUT_FUNCTION_MIXER;
+  newInput->getLatestInputData = mixerDataProducer;
+  newInput->configureChannelInput = NULL;
+  newInput->cleanupInputContextFn = NULL;
+  newInput->id = mixerIndex;
+  newInput->context = (void *)mixerChannel;
+  return newInput;
+}
+
 void initDefaultInputDescriptors(InputDescriptorPool *pool){
   Pool_Init(pool, &defaultInputDescriptor);
   AllocFixedValueInput(pool, "Zero (fixed)", 0);
@@ -179,16 +198,29 @@ void initDefaultInputDescriptors(InputDescriptorPool *pool){
   AllocADCInput(pool, "ADC0", A0);
   AllocADCInput(pool, "ADC1", A1);
   AllocADCInput(pool, "ADC2", A2);
+  AllocADCInput(pool, "ADC3", A3);
+  AllocADCInput(pool, "ADC4", A4);
+  AllocADCInput(pool, "ADC5", A5);
+  AllocADCInput(pool, "ADC6", A6);
+  AllocADCInput(pool, "ADC7", A7);
 }
 
-void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelsPool, int numChannels){
-  if(numChannels < 0 || numChannels > MAX_CHANNELS){
-    Serial.print("numChannels out of range, skipping.");
-    return;
+void initMixerInputDescriptors(InputDescriptorPool *inputChannelsPool, MixerChannelDescriptor *mixerChannels){
+  for (int i=0; i<MAX_MIXERS; i++){
+    mixerChannels[i].inputChannel1Descriptor = Pool_FindByIdAndType(inputChannelsPool, 0, INPUT_FUNCTION_CONST_FIXED);
+    mixerChannels[i].inputChannel2Descriptor = Pool_FindByIdAndType(inputChannelsPool, 0, INPUT_FUNCTION_CONST_FIXED);
+    mixerChannels[i].operation = MIXER_OP_ADD;
+    snprintf(mixerChannels[i].name,INPUT_NAME_LEN, "Mix %d", i);
+    //TODO: populate rest of mixerChannels[i]'s values
+    AllocDefaultMixerInput(inputChannelsPool, i, &mixerChannels[i]);
   }
-  assert(numChannels >= 0 && numChannels <= MAX_CHANNELS);
+}
+
+void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelsPool, MixerChannelDescriptor *mixerChannels){
+  initDefaultInputDescriptors(inputChannelsPool);
+  initMixerInputDescriptors(inputChannelsPool, mixerChannels);
   //build full list of default channels
-  for (int i=0; i < numChannels; i++){
+  for (int i=0; i < MAX_CHANNELS; i++){
     OutputChannelDescriptor *p = &outputChannels[i];  //get pointer to specific output channel
     char buf[INPUT_NAME_LEN];
     snprintf(buf, INPUT_NAME_LEN, "default (%d)", i);

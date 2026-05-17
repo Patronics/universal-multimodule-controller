@@ -67,6 +67,7 @@ volatile char requested_usb_port = 'A';
 char active_usb_port = requested_usb_port;
 
 OutputChannelDescriptor outChannels[MAX_CHANNELS]; //declare 16 item OutputChannelDescriptor array
+MixerChannelDescriptor mixerChannels[MAX_MIXERS];
 InputDescriptorPool inChannelsPool;
 
 
@@ -150,6 +151,7 @@ int currentMenu = -1;
 const int CURRENT_MENU_NONE = -1;
 
 int menuSubpageIndex = 0;  //for arbitrary use by sub-menu logic, should be reset to zero on exit from submenu
+void *menuSubpageContext = NULL; //for arbitrary use for more advanced state in submenu logic, should be properly freed on exit of submenu
 int menuUpdateCycleCount =0; //counter to update menu periodically if needed
 
 menuItem sysMenu[MENU_ITEM_COUNT];
@@ -180,7 +182,6 @@ uint8_t currentActiveSubProtocol = 0;
 bool transmitActive = false;
 bool haveTelemetry = false;
 
-void unimplementedMenuItemHandler(int index, NavButton btnPressed);
 
 
 
@@ -289,8 +290,8 @@ void setup() {
 
   Serial.println("starting.");
 
-  initDefaultInputDescriptors(&inChannelsPool);
-  initOutputAndDefaultInputChannelDescriptors(outChannels, &inChannelsPool, MAX_CHANNELS);
+  //initDefaultInputDescriptors(&inChannelsPool);
+  initOutputAndDefaultInputChannelDescriptors(outChannels, &inChannelsPool, mixerChannels);
   
 
 
@@ -538,7 +539,7 @@ void handleNavButton(NavButton btn){
 void clearMenuContents(){
     u8g2.setColorIndex(0); //erase
     u8g2.drawBox(0, 45, 128, 19);
-    u8g2.setColorIndex(1); //erase
+    u8g2.setColorIndex(1); //end erase
 }
 
 void setupMenuLayout(){
@@ -951,47 +952,139 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
   }
 }
 
+
 void mixerMenuItemHandler(int index, NavButton btnPressed){
   bool updated = false;
+  int valueShift = 0;
+  mixerMenuItemHandlerContext* activeMixer;
+  if (menuSubpageContext == NULL){ //when first opening menu
+    menuSubpageContext = calloc(1, sizeof(mixerMenuItemHandlerContext));
+    activeMixer = (mixerMenuItemHandlerContext *)menuSubpageContext; 
+    menuSubpageIndex=0;
+    activeMixer->currentlyEditingMixer = &mixerChannels[menuSubpageIndex];
+    //TODO: populate mixerMenuItemHandlerContext to a given mixer item stored in mix 0
+  }
+  activeMixer = (mixerMenuItemHandlerContext *)menuSubpageContext; 
+
   if (btnPressed == LEFT_BUTTON){
+    updated = true;
+    valueShift = -1;
   } else if (btnPressed == RIGHT_BUTTON){
+    updated = true;
+    valueShift = 1;
   } else if (btnPressed == UP_BUTTON){
+    updated=true;
+    activeMixer->mixerActiveEditState = (mixerEditTargetState)((int)activeMixer->mixerActiveEditState - 1);
+    if(activeMixer->mixerActiveEditState <= MIXER_EDIT_STATE_ENUM_UNDERFLOW){
+      activeMixer->mixerActiveEditState = MIXER_EDIT_STATE_CHANGE_MIXER_ITEM;
+    }
   } else if (btnPressed == DOWN_BUTTON){
+    updated=true;
+    activeMixer->mixerActiveEditState = (mixerEditTargetState)((int)activeMixer->mixerActiveEditState + 1);
+    if(activeMixer->mixerActiveEditState >= MIXER_EDIT_STATE_ENUM_OVERFLOW){
+      activeMixer->mixerActiveEditState = MIXER_EDIT_STATE_CHANGE_MIXER_ITEM;
+    }
   } else if( btnPressed == OK_BUTTON){
     updated=true;
+    activeMixer->mixerActiveEditState = MIXER_EDIT_STATE_CHANGE_MIXER_ITEM;
   } else if (btnPressed == BACK_BUTTON){
+    free(menuSubpageContext);  //cleanup the context object
+    menuSubpageIndex=0;
+    menuSubpageContext=NULL;
     clearMenuContents();
   }
+  if(valueShift){ //both -1 and 1 are truthy, handle left/right buttons
+    switch (activeMixer->mixerActiveEditState){
+      case MIXER_EDIT_STATE_CHANGE_MIXER_ITEM:
+        menuSubpageIndex+=valueShift;
+        menuSubpageIndex = clamp(menuSubpageIndex, 0, MAX_MIXERS-1); //clamp to valid mixer range
+        activeMixer->currentlyEditingMixer = &mixerChannels[menuSubpageIndex];
+        break;
+      case MIXER_EDIT_STATE_OPERATION:
+        activeMixer->currentlyEditingMixer->operation = (MixerCombineOperation)((int)activeMixer->currentlyEditingMixer->operation + valueShift);
+        if (activeMixer->currentlyEditingMixer->operation >= MIXER_OP_ENUM_OVERFLOW){
+          activeMixer->currentlyEditingMixer->operation = MIXER_OP_CH1_ONLY;
+        } else if (activeMixer->currentlyEditingMixer->operation <= MIXER_OP_ENUM_UNDERFLOW){
+          activeMixer->currentlyEditingMixer->operation = (MixerCombineOperation)((int)MIXER_OP_ENUM_OVERFLOW-1);
+        }
+        break;
+      case MIXER_EDIT_STATE_A_SOURCE:
+      case MIXER_EDIT_STATE_B_SOURCE:
+        InputChannelDescriptor** activeInputChannelDescriptor; //double pointer to refer to either inputChannel1Descriptor or inputChannel2Descriptor
+        if(activeMixer->mixerActiveEditState == MIXER_EDIT_STATE_A_SOURCE){
+          activeInputChannelDescriptor = &(activeMixer->currentlyEditingMixer->inputChannel1Descriptor);
+        } else { //MIXER_EDIT_STATE_B_SOURCE
+          activeInputChannelDescriptor = &(activeMixer->currentlyEditingMixer->inputChannel2Descriptor);
+        }
+        int channelInputIndex = Pool_FindIndexByIdAndType(&inChannelsPool, (*activeInputChannelDescriptor)->id, (*activeInputChannelDescriptor)->inputFunctionType);
+        int nextChannelIndex;
+        if(valueShift == 1){
+          nextChannelIndex = Pool_FindNextUsedIndex(&inChannelsPool, channelInputIndex+1);
+        } else {  //if valueShift == -1
+          nextChannelIndex = Pool_FindPreviousUsedIndex(&inChannelsPool, channelInputIndex-1);
+        }
+        if(nextChannelIndex != -1){ //verify valid channel present
+          (*activeInputChannelDescriptor)=&(inChannelsPool.items[nextChannelIndex]);
+        }
+        break;
+    }
+  }
   if(updated){
+    u8g2.setDrawColor(0);
+    u8g2.drawBox(0, 25, 128, 39);
+    u8g2.setDrawColor(1);
     u8g2.drawVLine(64, 25, 39);
     u8g2.setCursor(0,32);
-    u8g2.setDrawColor(0); //hightlight currently selected value
+    u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_CHANGE_MIXER_ITEM);
     //sample values for formatting
-    u8g2.print(" Mix 0:");
+    u8g2PrintStrWithMaxLength(activeMixer->currentlyEditingMixer->name,7);
+    //u8g2.print(" Mix 0:");
     u8g2.setCursor(100,32);
+    u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_OPERATION);
+    u8g2PrintPadding();
+    u8g2.print("OP:");
+    u8g2.print(MixerCombineOperationString[activeMixer->currentlyEditingMixer->operation]);
     u8g2.setDrawColor(1);
-    u8g2.print("OP:ADD");
-    u8g2.setDrawColor(0);
     u8g2.setCursor(30,32);
-    u8g2.print(" A: 8_2 ");
-    u8g2.setDrawColor(1); //clear highlight
-    u8g2.setCursor(66,32);
-    u8g2.print("B: 2_41 ");
+    u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_SOURCE);
+    u8g2PrintPadding();
+    u8g2.print("A:");
+    u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->inputFunctionType, DEC);
+    u8g2.print("_");
+    u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->id, DEC);
     u8g2.setCursor(0, 39);
-    u8g2.print("\"Dualsense 5-LY\"");
+    u8g2.setDrawColor(1);
+    u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->name);
+    //u8g2.print("\"Dualsense 5-LY\"");
     //u8g2.setCursor(64, 56);
     //u8g2.print(" L/R: Edit mode");
     u8g2.setCursor(0, 45);
+    u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_SCALE);
     u8g2.print("Scale:100");
     u8g2.print(" ");
-    u8g2.setDrawColor(0);
     u8g2.setCursor(0,51);
+    u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_INVERT);
     u8g2.print("Invert:no");
-    u8g2.setDrawColor(1);
     u8g2.print(" ");
     u8g2.setCursor(0,58);
+    u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_OFFSET);
     u8g2.print("Offset:0");
     u8g2.print(" ");
+    if(activeMixer->currentlyEditingMixer->operation != MIXER_OP_CH1_ONLY){
+      u8g2.setCursor(66,32);
+      u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_SOURCE);
+      u8g2PrintPadding();
+      u8g2.print("B:");
+      u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->inputFunctionType, DEC);
+      u8g2.print("_");
+      u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->id, DEC);
+      u8g2.setCursor(66, 39);
+      u8g2.setDrawColor(1);
+      u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->name);
+    }
+    u8g2.setDrawColor(1);
+    u8g2.setCursor(42,55);
+    u8g2.print("Value: 125");
   }
 }
 

@@ -16,6 +16,9 @@
 #define MIXER_NAME_LEN 16
 #define OUTPUT_NAME_LEN 16
 
+//may want to increase mixers beyond max_channels to allow more complex nested mixes
+#define MAX_MIXERS MAX_CHANNELS
+
 #define MAX_USB_DEVICE_DESCRIPTORS 8
 #define MAX_INPUT_CHANNELS_PER_USB_DEVICE 16
 
@@ -75,10 +78,23 @@ typedef enum {
     MIXER_OP_DIV,    //divide Channel1 by Channel2
     MIXER_OP_MIN,    //useful for lock-out switch
     MIXER_OP_MAX,
-    MIXER_OP_RESERVED //reserved for future use
+    MIXER_OP_ENUM_OVERFLOW,
+    MIXER_OP_ENUM_UNDERFLOW=-1
 } MixerCombineOperation;
 
+static const char* MixerCombineOperationString [] = {
+    "Ch1",
+    "ADD",
+    "MUL",
+    "DIV",
+    "MIN",
+    "MAX",
+    "Err"
+};
+ 
+
 typedef struct {
+    MixerCombineOperation operation;
     InputChannelDescriptor *inputChannel1Descriptor;
     int channel1Offset;
     float channel1Scale;
@@ -90,6 +106,25 @@ typedef struct {
     char name[MIXER_NAME_LEN];
 } MixerChannelDescriptor; //short, NULL-terminated ASCII name
 
+typedef enum {
+  MIXER_EDIT_STATE_CHANGE_MIXER_ITEM = 0,
+  MIXER_EDIT_STATE_OPERATION,
+  MIXER_EDIT_STATE_A_SOURCE,
+  MIXER_EDIT_STATE_A_SCALE,
+  MIXER_EDIT_STATE_A_INVERT,
+  MIXER_EDIT_STATE_A_OFFSET,
+  MIXER_EDIT_STATE_B_SOURCE,
+  MIXER_EDIT_STATE_B_SCALE,
+  MIXER_EDIT_STATE_B_INVERT,
+  MIXER_EDIT_STATE_B_OFFSET,
+  MIXER_EDIT_STATE_ENUM_OVERFLOW,
+  MIXER_EDIT_STATE_ENUM_UNDERFLOW=-1
+} mixerEditTargetState;
+
+typedef struct {
+  MixerChannelDescriptor *currentlyEditingMixer;
+  mixerEditTargetState mixerActiveEditState;
+} mixerMenuItemHandlerContext;
 
 typedef struct {
     InputChannelDescriptor *inputChannelDescriptor; // Pointer to input channel descriptor
@@ -163,7 +198,7 @@ int Pool_FindNextUsedIndex(InputDescriptorPool *pool, int index);
 int Pool_FindPreviousUsedIndex(InputDescriptorPool *pool, int index);
 
 void initDefaultInputDescriptors(InputDescriptorPool *pool);
-void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelPool, int numChannels);
+void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelPool, MixerChannelDescriptor *mixerChannels);
 void assignInputChannelDescriptor(OutputChannelDescriptor *outputChannel, InputChannelDescriptor *inputChannel);
 int defaultInputDataProducer(void* context, int id);
 int fixedInputDataProducer(void* context, int id);
