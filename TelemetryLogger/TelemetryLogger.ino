@@ -1245,7 +1245,34 @@ void saveModelToFileAtIndex(int index){
     channelObj["id"] = inputChannel->id;
     channelObj["minRange"] = outChannels[i].minRange;
     channelObj["maxRange"] = outChannels[i].maxRange;
+
     channelsArray[i]=channelObj;
+  }
+  JsonArray mixersArray = newModelDoc["mixers"].to<JsonArray>();
+  for(int i=0; i<MAX_MIXERS; i++){
+    JsonDocument mixerObj;
+    mixerObj["id"]=mixerChannels[i].id;
+    int operationTypeEnumVal = int(mixerChannels[i].operation);
+    mixerObj["op"]= operationTypeEnumVal;
+    mixerObj["name"]= mixerChannels[i].name;
+    InputChannelDescriptor *inputChannel1 = mixerChannels[i].inputChannel1Descriptor;
+    InputChannelDescriptor *inputChannel2 = mixerChannels[i].inputChannel2Descriptor;
+    int channel1TypeEnumVal = int(inputChannel1->inputFunctionType);
+    int channel2TypeEnumVal = int(inputChannel2->inputFunctionType);
+    mixerObj["type1"]=channel1TypeEnumVal;
+    mixerObj["type2"]=channel2TypeEnumVal;
+    mixerObj["name1"] = inputChannel1->name;
+    mixerObj["name2"] = inputChannel2->name;
+    mixerObj["id1"] = inputChannel1->id;
+    mixerObj["id2"] = inputChannel2->id;
+    mixerObj["scale1"] = mixerChannels[i].channel1Scale;
+    mixerObj["scale2"] = mixerChannels[i].channel2Scale;
+    mixerObj["offset1"] = mixerChannels[i].channel1Offset;
+    mixerObj["offset2"] = mixerChannels[i].channel2Offset;
+    mixerObj["invert1"] = mixerChannels[i].channel1Invert;
+    mixerObj["invert2"] = mixerChannels[i].channel2Invert;
+
+    mixersArray[i]=mixerObj;
   }
   serializeJson(newModelDoc, Serial); //print json to USB Serial log
   serializeJson(newModelDoc, newModelFile);
