@@ -1286,7 +1286,9 @@ void saveModelToFileAtIndex(int index){
 
     mixersArray[i]=mixerObj;
   }
-  serializeJson(newModelDoc, Serial); //print json to USB Serial log
+  if(debug_level<DEBUG_SAVELOAD>()){
+    serializeJson(newModelDoc, Serial); //print json to USB Serial log
+  }
   serializeJson(newModelDoc, newModelFile);
   newModelFile.close();
 }
@@ -1358,9 +1360,19 @@ bool loadModelFromFileAtIndex(int index){
       const char* mixerName = mixerObj["name"];
       SerialDebugln<DEBUG_SAVELOAD>(mixerName);
       //optional todo: populate loaded name (currently just mix 0, etc, as prepopulated)
+      mixerChannels[i].id = mixerObj["id"];
       int operationTypeEnumVal = mixerObj["op"];
       mixerChannels[i].operation = (MixerCombineOperation)operationTypeEnumVal;
-
+      InputChannelDescriptor *matchingInputDescriptor1 = findInputDescriptorWithTypeNameAndId(&inChannelsPool, (InputFunctionType)mixerObj["type1"], mixerObj["name1"], mixerObj["id1"]);
+      InputChannelDescriptor *matchingInputDescriptor2 = findInputDescriptorWithTypeNameAndId(&inChannelsPool, (InputFunctionType)mixerObj["type2"], mixerObj["name2"], mixerObj["id2"]);
+      mixerChannels[i].inputChannel1Descriptor = matchingInputDescriptor1;
+      mixerChannels[i].inputChannel2Descriptor = matchingInputDescriptor2;
+      mixerChannels[i].channel1Scale = mixerObj["scale1"];
+      mixerChannels[i].channel2Scale = mixerObj["scale2"];
+      mixerChannels[i].channel1Offset = mixerObj["offset1"];
+      mixerChannels[i].channel2Offset = mixerObj["offset2"];
+      mixerChannels[i].channel1Invert = mixerObj["invert1"];
+      mixerChannels[i].channel2Invert = mixerObj["invert2"];
     }
   } else {
     SerialDebug<DEBUG_SAVELOAD|DEBUG_WARN>("Warning, mixers array invalid or not present");
