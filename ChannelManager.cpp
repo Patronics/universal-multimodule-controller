@@ -216,6 +216,24 @@ int Pool_FindPreviousUsedIndex(InputDescriptorPool *pool, int index){
   return -1;
 }
 
+InputChannelDescriptor* findInputDescriptorWithTypeNameAndId(InputDescriptorPool *pool, InputFunctionType type, const char* name, int id){
+  InputChannelDescriptor *matchingInputDescriptor = NULL;
+  if(type == INPUT_FUNCTION_USB_GAMEPAD_STICK){ //allow fuzzy matching of USB gamepad inputs
+  matchingInputDescriptor = FindInputChannelDescriptorByInputNameSuffix(
+    pool, name, INPUT_NAME_LEN);
+  if(matchingInputDescriptor == NULL){
+    matchingInputDescriptor = FindInputChannelDescriptorByInputNameSuffix(
+      pool, name, 3); //fuzzy match last 3 chars eg. '-XY'
+  }
+  if(matchingInputDescriptor == NULL){ //still no USB matches, skip populating this channel
+    return NULL;
+  }
+  } else {  //all other input types
+    matchingInputDescriptor = Pool_FindByIdAndType(pool, id, type);
+  }
+  return matchingInputDescriptor;
+}
+
 //defaults to INPUT_FUNCTION_CONST_FIXED
 InputChannelDescriptor *AllocFixedValueInput(InputDescriptorPool *pool, const char* name, int value){
   InputChannelDescriptor *newInput = Pool_Allocate(pool);

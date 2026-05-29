@@ -75,6 +75,10 @@ template<uint32_t Mask>
 inline void SerialDebug(const char *s) {
     if constexpr ((debug_flags & Mask) != 0) Serial.print(s);
 }
+template<uint32_t Mask>
+inline void SerialDebug(char v) {
+    if constexpr ((debug_flags & Mask) != 0) Serial.print(v);
+}
 
 // numeric overloads
 template<uint32_t Mask>
@@ -94,11 +98,23 @@ inline void SerialDebug(float v, int digits = 2) {
     if constexpr ((debug_flags & Mask) != 0) Serial.print(v, digits);
 }
 
+//generic for most other types
+template<uint32_t Mask, typename T>
+inline void SerialDebug(const T &v) {
+    if constexpr ((debug_flags & Mask) != 0) {
+        Serial.print(v);
+    }
+}
+
 
 // println variants
 template<uint32_t Mask>
 inline void SerialDebugln(const char *s) {
     if constexpr ((debug_flags & Mask) != 0) Serial.println(s);
+}
+template<uint32_t Mask>
+inline void SerialDebugln(char c) {
+    if constexpr ((debug_flags & Mask) != 0) Serial.println(c);
 }
 //numeric
 template<uint32_t Mask>
@@ -117,6 +133,16 @@ template<uint32_t Mask>
 inline void SerialDebugln(float v, int digits = 2) {
     if constexpr ((debug_flags & Mask) != 0) Serial.println(v, digits);
 }
+
+//generic for most other types
+template<uint32_t Mask, typename T>
+inline void SerialDebugln(const T &v) {
+    if constexpr ((debug_flags & Mask) != 0) {
+        Serial.print(v);
+        Serial.println();
+    }
+}
+
 //just a newline
 template<uint32_t Mask>
 inline void SerialDebugln() {

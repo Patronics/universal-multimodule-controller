@@ -202,6 +202,8 @@ int Pool_FindIndexByIdAndType(InputDescriptorPool *pool, int id, InputFunctionTy
 int Pool_FindNextUsedIndex(InputDescriptorPool *pool, int index);
 int Pool_FindPreviousUsedIndex(InputDescriptorPool *pool, int index);
 
+InputChannelDescriptor* findInputDescriptorWithTypeNameAndId(InputDescriptorPool *pool, InputFunctionType type, const char* name, int id);
+
 void initDefaultInputDescriptors(InputDescriptorPool *pool);
 void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelPool, MixerChannelDescriptor *mixerChannels);
 void assignInputChannelDescriptor(OutputChannelDescriptor *outputChannel, InputChannelDescriptor *inputChannel);

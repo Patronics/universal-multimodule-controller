@@ -626,7 +626,7 @@ void setupMenuLayout(){
   menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
-  strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 2
+  strlcpy(menuItems[menuNumber].label, "Defaults", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 2
   menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuItems[menuNumber].update_period_cycles = 0; //no updates required
@@ -1293,7 +1293,7 @@ void saveModelToFileAtIndex(int index){
 
 bool loadModelFromFileAtIndex(int index){
   if(!LittleFS.exists("/models/index/"+String(index)+"/model.json")){
-    Serial.println("no model file");
+    SerialDebug<DEBUG_SAVELOAD|DEBUG_FS>("no model file");
     return false;
   }
   File modelFile = LittleFS.open("/models/index/"+String(index)+"/model.json", "r");
@@ -1302,61 +1302,68 @@ bool loadModelFromFileAtIndex(int index){
   modelFile.close();
   //serializeJson(modelDoc, Serial);  //print json to USB Serial log
   uint8_t protocol = modelDoc["protocol"];
-  Serial.print("loading protocol:");
-  Serial.println(protocol);
+  SerialDebug<DEBUG_SAVELOAD>("loading protocol:");
+  SerialDebugln<DEBUG_SAVELOAD>(protocol);
   uint8_t subprotocol = modelDoc["subprotocol"] | 0;
-  Serial.print("loading subprotocol:");
-  Serial.println(subprotocol);
+  SerialDebug<DEBUG_SAVELOAD>("loading subprotocol:");
+  SerialDebug<DEBUG_SAVELOAD>(static_cast<uint32_t>(subprotocol));
   setProtocolMode(&streamOut, protocol, subprotocol);
   char port = (char)modelDoc["port"].as<unsigned char>() | 'A';
-  Serial.print("loading usb port:");
-  Serial.println(port);
+  SerialDebug<DEBUG_SAVELOAD>("loading usb port:");
+  SerialDebugln<DEBUG_SAVELOAD>(port);
   requested_usb_port = port;
-  Serial.print("loading channels");
+  SerialDebug<DEBUG_SAVELOAD>("loading channels");
   JsonArray channelsArray = modelDoc["channels"];
-  //serializeJson(channelsArray, Serial);
+  if(debug_level<DEBUG_SAVELOAD>()){
+    //serializeJson(channelsArray, Serial);
+  }
   if(channelsArray){
     for(int i=0; i<MAX_CHANNELS; i++){
       JsonObject channelObj = channelsArray[i];
-      Serial.print("\nloading channel: ");
-      Serial.println(i);
-      serializeJson(channelObj, Serial);
+      SerialDebug<DEBUG_SAVELOAD>("\nloading channel: ");
+      SerialDebugln<DEBUG_SAVELOAD>(i);
+      if(debug_level<DEBUG_SAVELOAD>()){
+        serializeJson(channelObj, Serial);
+      }
       const char* channelName = channelObj["name"];
-      Serial.print(channelName);
+      SerialDebugln<DEBUG_SAVELOAD>(channelName);
+      //optional todo: populate loaded name (currently just ch0, etc, as prepopulated)
       int channelTypeEnumVal = channelObj["type"];
       outChannels[i].minRange = channelObj["minRange"];
       outChannels[i].maxRange = channelObj["maxRange"];
-      InputChannelDescriptor *matchingInputDescriptor;
-      if(channelTypeEnumVal == INPUT_FUNCTION_USB_GAMEPAD_STICK){ //allow fuzzy matching of USB gamepad inputs
-        matchingInputDescriptor = FindInputChannelDescriptorByInputNameSuffix(
-          &inChannelsPool, channelName, INPUT_NAME_LEN);
-        if(matchingInputDescriptor == NULL){
-          matchingInputDescriptor = FindInputChannelDescriptorByInputNameSuffix(
-            &inChannelsPool, channelName, 3); //fuzzy match last 3 chars eg. '-XY'
-        }
-        if(matchingInputDescriptor == NULL){ //still no USB matches, skip populating this channel
-          Serial.print("no USB matches found, skipping channel");
+      InputChannelDescriptor *matchingInputDescriptor = findInputDescriptorWithTypeNameAndId(&inChannelsPool, (InputFunctionType)channelTypeEnumVal, channelObj["name"], channelObj["id"]);
+      if (matchingInputDescriptor == NULL){
+          SerialDebug<DEBUG_SAVELOAD>("No matching channels (USB or id/type), skipping channel");
           continue;
-        }
-      } else {  //all other input types
-        matchingInputDescriptor = Pool_FindByIdAndType(&inChannelsPool, channelObj["id"], channelObj["type"]);
-        if (matchingInputDescriptor == NULL){
-          Serial.print("No matching channel id and type found, skipping channel");
-          continue;
-        }
       }
       outChannels[i].inputChannelDescriptor=matchingInputDescriptor;
     }
   } else {
-    Serial.print("Warning, channels array invalid or not present");
+    SerialDebug<DEBUG_SAVELOAD|DEBUG_WARN>("Warning, channels array invalid or not present");
   }
-  Serial.print("\nloading mixers:\n");
+  SerialDebug<DEBUG_SAVELOAD>("\nloading mixers:\n");
   JsonArray mixersArray = modelDoc["mixers"];
   if(mixersArray){
     //for debugging, print to console
-    serializeJson(mixersArray, Serial);
+    if(debug_level<DEBUG_SAVELOAD>()){
+      //serializeJson(mixersArray, Serial);
+    }
+    for(int i=0; i<MAX_MIXERS; i++){
+      JsonObject mixerObj = mixersArray[i];
+      SerialDebug<DEBUG_SAVELOAD>("\nloading mixer: ");
+      SerialDebugln<DEBUG_SAVELOAD>(i);
+      if(debug_level<DEBUG_SAVELOAD>()){
+        serializeJson(mixerObj, Serial);
+      }
+      const char* mixerName = mixerObj["name"];
+      SerialDebugln<DEBUG_SAVELOAD>(mixerName);
+      //optional todo: populate loaded name (currently just mix 0, etc, as prepopulated)
+      int operationTypeEnumVal = mixerObj["op"];
+      mixerChannels[i].operation = (MixerCombineOperation)operationTypeEnumVal;
+
+    }
   } else {
-    Serial.print("Warning, mixers array invalid or not present");
+    SerialDebug<DEBUG_SAVELOAD|DEBUG_WARN>("Warning, mixers array invalid or not present");
   }
   return true;
 }
