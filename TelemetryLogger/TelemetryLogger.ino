@@ -13,6 +13,9 @@ This script reads telemetry data from a 4-in-one multimodule.
   - Chip Variant "RP2350B"
 */
 
+//Note: DEBUG_FLAGS must be defined before including UI.h. See UI.h for list of valid flags
+#define DEBUG_FLAGS (DEBUG_USB|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
+//available flags: DEBUG_USB|DEBUG_USB_REPORT|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE
 
 #include "MultiModule.h"
 #include "ChannelManager.h"
@@ -43,6 +46,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 #define SERIAL_MODULE_RX_PIN 13
 #define SERIAL_MODULE_TX_PIN 16
 #define SERIAL_MODULE_INVERT_RX
+
 
 const unsigned long SERIAL_MODULE_BAUD_RATE = 100000;
 const int SERIAL_MODULE_BUFFER_SIZE = 128;
@@ -270,21 +274,27 @@ void setup() {
     ; // wait for USB serial port to connect
   }*/
 
+  SerialDebug<DEBUG_LOG>("Serial Debugging enabled: log level ");
+  SerialDebug<DEBUG_LOG>(debug_flags);
+  SerialDebug<DEBUG_LOG>("\n");
+
   if(!LittleFS.begin()){
-    Serial.println("FS begin failed");
+    SerialDebug<DEBUG_ERROR>("FS begin failed");
   } else {
     VFS.root(LittleFS);
     FSInfo fs_info;
     if (!LittleFS.info(fs_info)) {
-      Serial.println("FS info() failed");
+      SerialDebug<DEBUG_WARN>("FS info() failed");
     } else {
-      Serial.println("LittleFS info:");
-      Serial.print("  totalBytes:     "); Serial.println((unsigned long long)fs_info.totalBytes);
-      Serial.print("  usedBytes:      "); Serial.println((unsigned long long)fs_info.usedBytes);
-      Serial.print("  blockSize:      "); Serial.println((size_t)fs_info.blockSize);
-      Serial.print("  pageSize:       "); Serial.println((size_t)fs_info.pageSize);
-      Serial.print("  maxOpenFiles:   "); Serial.println((size_t)fs_info.maxOpenFiles);
-      Serial.print("  maxPathLength:  "); Serial.println((size_t)fs_info.maxPathLength);
+      if(debug_level<DEBUG_FS>()){
+        Serial.println("LittleFS info:");
+        Serial.print("  totalBytes:     "); Serial.println((unsigned long long)fs_info.totalBytes);
+        Serial.print("  usedBytes:      "); Serial.println((unsigned long long)fs_info.usedBytes);
+        Serial.print("  blockSize:      "); Serial.println((size_t)fs_info.blockSize);
+        Serial.print("  pageSize:       "); Serial.println((size_t)fs_info.pageSize);
+        Serial.print("  maxOpenFiles:   "); Serial.println((size_t)fs_info.maxOpenFiles);
+        Serial.print("  maxPathLength:  "); Serial.println((size_t)fs_info.maxPathLength);
+      }
     }
   }
 
@@ -311,6 +321,7 @@ void setup1() {
   //Select active USB port, either 'A' or 'C'
   disable_usb();
   delay(1000);
+  SerialDebugln<DEBUG_CORE>("Core1 setup to run TinyUSB host with pio-usb");
   rp2040_configure_pio_usb(active_usb_port);
   // run host stack on controller (rhport) 1
   // Note: For rp2040 pico-pio-usb, calling USBHost.begin() on core1 will have most of the
@@ -321,7 +332,7 @@ void setup1() {
 void loop1() {
   //valid requested USB ports are A, C, and Z (disabled).
   if (requested_usb_port != active_usb_port){
-    Serial.print("Updating active USB port!");
+    SerialDebugln<DEBUG_LOG>("Updating active USB port!");
     disable_usb();
     delay(1000);
     USBHost.task();
@@ -446,6 +457,7 @@ void updateChannelValues(MultiProtocolStream* s){
 
 }
 
+
 void transmit(MultiProtocolStream* s, uint8_t aditional_bytes){
   uint8_t* byteArray = (uint8_t*)s;
   SerialModule.write(byteArray, (sizeof(MultiProtocolStream)-(9-aditional_bytes)));
@@ -497,7 +509,7 @@ void drawCompactMenu(int headingMenuItem) {
 }
 
 void handleNavButton(NavButton btn){
-  Serial.println(btn);
+  SerialDebug<DEBUG_BUTTONS>(static_cast<uint32_t>(btn));
   if(currentMenu == -1){
     if(btn == UP_BUTTON){
       selectedMenu -= 2;
@@ -1338,6 +1350,14 @@ bool loadModelFromFileAtIndex(int index){
   } else {
     Serial.print("Warning, channels array invalid or not present");
   }
+  Serial.print("\nloading mixers:\n");
+  JsonArray mixersArray = modelDoc["mixers"];
+  if(mixersArray){
+    //for debugging, print to console
+    serializeJson(mixersArray, Serial);
+  } else {
+    Serial.print("Warning, mixers array invalid or not present");
+  }
   return true;
 }
 
@@ -1604,54 +1624,54 @@ void utf16_to_utf8(uint16_t *temp_buf, size_t buf_len) {
 
 void print_device_descriptor(tuh_xfer_t *xfer) {
   if (XFER_RESULT_SUCCESS != xfer->result) {
-    Serial.printf("Failed to get device descriptor\r\n");
+    SerialDebugln<DEBUG_USB>("Failed to get device descriptor");
     return;
   }
 
   uint8_t const daddr = xfer->daddr;
   usb_dev_info_t *dev = &usb_raw_descriptors[daddr - 1];; //all instances will have the same descriptor
   tusb_desc_device_t *desc = &dev->desc_device;
+  if(debug_level<DEBUG_USB>()){
+    Serial.printf("Device %u: ID %04x:%04x\r\n", daddr, desc->idVendor, desc->idProduct);
+    Serial.printf("Device Descriptor:\r\n");
+    Serial.printf("  bLength             %u\r\n"     , desc->bLength);
+    Serial.printf("  bDescriptorType     %u\r\n"     , desc->bDescriptorType);
+    Serial.printf("  bcdUSB              %04x\r\n"   , desc->bcdUSB);
+    Serial.printf("  bDeviceClass        %u\r\n"     , desc->bDeviceClass);
+    Serial.printf("  bDeviceSubClass     %u\r\n"     , desc->bDeviceSubClass);
+    Serial.printf("  bDeviceProtocol     %u\r\n"     , desc->bDeviceProtocol);
+    Serial.printf("  bMaxPacketSize0     %u\r\n"     , desc->bMaxPacketSize0);
+    Serial.printf("  idVendor            0x%04x\r\n" , desc->idVendor);
+    Serial.printf("  idProduct           0x%04x\r\n" , desc->idProduct);
+    Serial.printf("  bcdDevice           %04x\r\n"   , desc->bcdDevice);
 
-  Serial.printf("Device %u: ID %04x:%04x\r\n", daddr, desc->idVendor, desc->idProduct);
-  Serial.printf("Device Descriptor:\r\n");
-  Serial.printf("  bLength             %u\r\n"     , desc->bLength);
-  Serial.printf("  bDescriptorType     %u\r\n"     , desc->bDescriptorType);
-  Serial.printf("  bcdUSB              %04x\r\n"   , desc->bcdUSB);
-  Serial.printf("  bDeviceClass        %u\r\n"     , desc->bDeviceClass);
-  Serial.printf("  bDeviceSubClass     %u\r\n"     , desc->bDeviceSubClass);
-  Serial.printf("  bDeviceProtocol     %u\r\n"     , desc->bDeviceProtocol);
-  Serial.printf("  bMaxPacketSize0     %u\r\n"     , desc->bMaxPacketSize0);
-  Serial.printf("  idVendor            0x%04x\r\n" , desc->idVendor);
-  Serial.printf("  idProduct           0x%04x\r\n" , desc->idProduct);
-  Serial.printf("  bcdDevice           %04x\r\n"   , desc->bcdDevice);
+    // Get String descriptor using Sync API
+    Serial.printf("  iManufacturer       %u     ", desc->iManufacturer);
+    if (XFER_RESULT_SUCCESS ==
+        tuh_descriptor_get_manufacturer_string_sync(daddr, LANGUAGE_ID, dev->manufacturer, sizeof(dev->manufacturer))) {
+      utf16_to_utf8(dev->manufacturer, sizeof(dev->manufacturer));
+      Serial.printf((char *) dev->manufacturer);
+    }
+    Serial.printf("\r\n");
 
-  // Get String descriptor using Sync API
-  Serial.printf("  iManufacturer       %u     ", desc->iManufacturer);
-  if (XFER_RESULT_SUCCESS ==
-      tuh_descriptor_get_manufacturer_string_sync(daddr, LANGUAGE_ID, dev->manufacturer, sizeof(dev->manufacturer))) {
-    utf16_to_utf8(dev->manufacturer, sizeof(dev->manufacturer));
-    Serial.printf((char *) dev->manufacturer);
+    Serial.printf("  iProduct            %u     ", desc->iProduct);
+    if (XFER_RESULT_SUCCESS ==
+        tuh_descriptor_get_product_string_sync(daddr, LANGUAGE_ID, dev->product, sizeof(dev->product))) {
+      utf16_to_utf8(dev->product, sizeof(dev->product));
+      Serial.printf((char *) dev->product);
+    }
+    Serial.printf("\r\n");
+
+    Serial.printf("  iSerialNumber       %u     ", desc->iSerialNumber);
+    if (XFER_RESULT_SUCCESS ==
+        tuh_descriptor_get_serial_string_sync(daddr, LANGUAGE_ID, dev->serial, sizeof(dev->serial))) {
+      utf16_to_utf8(dev->serial, sizeof(dev->serial));
+      Serial.printf((char *) dev->serial);
+    }
+    Serial.printf("\r\n");
+
+    Serial.printf("  bNumConfigurations  %u\r\n", desc->bNumConfigurations);
   }
-  Serial.printf("\r\n");
-
-  Serial.printf("  iProduct            %u     ", desc->iProduct);
-  if (XFER_RESULT_SUCCESS ==
-      tuh_descriptor_get_product_string_sync(daddr, LANGUAGE_ID, dev->product, sizeof(dev->product))) {
-    utf16_to_utf8(dev->product, sizeof(dev->product));
-    Serial.printf((char *) dev->product);
-  }
-  Serial.printf("\r\n");
-
-  Serial.printf("  iSerialNumber       %u     ", desc->iSerialNumber);
-  if (XFER_RESULT_SUCCESS ==
-      tuh_descriptor_get_serial_string_sync(daddr, LANGUAGE_ID, dev->serial, sizeof(dev->serial))) {
-    utf16_to_utf8(dev->serial, sizeof(dev->serial));
-    Serial.printf((char *) dev->serial);
-  }
-  Serial.printf("\r\n");
-
-  Serial.printf("  bNumConfigurations  %u\r\n", desc->bNumConfigurations);
-
   // print device summary
   //print_lsusb();
 }
@@ -1694,8 +1714,8 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
   uint16_t vid, pid;
   tuh_vid_pid_get(dev_addr, &vid, &pid);
 
-  Serial.printf("HID device address = %d, instance = %d is mounted\r\n", dev_addr, instance);
-  Serial.printf("VID = %04x, PID = %04x\r\n", vid, pid);
+  SerialDebugf<DEBUG_USB>("HID device address = %d, instance = %d is mounted\r\n", dev_addr, instance);
+  SerialDebugf<DEBUG_USB>("VID = %04x, PID = %04x\r\n", vid, pid);
 
   uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
 
@@ -1714,36 +1734,36 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
     //delay(100);
     snprintf(USBDeviceDescriptors[thisDeviceIndex].name, INPUT_NAME_LEN, "usb dev #(%d)", thisDeviceIndex);
   } else {
-    Serial.println("Error: max number of device descriptors exceeded!");
-    Serial.println("returning early from USB setup, may result in undefined behavior");
+    SerialDebugln<DEBUG_USB>("Error: max number of device descriptors exceeded!");
+    SerialDebugln<DEBUG_USB>("returning early from USB setup, may result in undefined behavior");
     return;
   }
 
   if (itf_protocol == HID_ITF_PROTOCOL_KEYBOARD) {
-    Serial.printf("HID Keyboard\r\n");
+    SerialDebug<DEBUG_USB>("HID Keyboard\r\n");
     if (!tuh_hid_receive_report(dev_addr, instance)) {
-      Serial.printf("Error: cannot request to receive report\r\n");
+      SerialDebug<DEBUG_USB>("Error: cannot request to receive report\r\n");
     }
     //init keyboard number input channel:
     AllocateUSBKeyboardNumberInputChannel(&inChannelsPool, 0, "USB KB number", &USBDeviceDescriptors[thisDeviceIndex]);
 
   } else if (itf_protocol == HID_ITF_PROTOCOL_MOUSE) {
-    Serial.printf("HID Mouse\r\n");
+    SerialDebug<DEBUG_USB>("HID Mouse\r\n");
     if (!tuh_hid_receive_report(dev_addr, instance)) {
-      Serial.printf("Error: cannot request to receive report\r\n");
+      SerialDebug<DEBUG_USB>("Error: cannot request to receive report\r\n");
     }
   } else if(const USBGamepadLayoutDefinition *thisControllerLayout = checkForKnownGamepadLayout(vid, pid); thisControllerLayout){
     USBDeviceDescriptors[thisDeviceIndex].hidInterfaceType = USB_DESCRIPTOR_PROTOCOL_GAMEPAD;
     USBDeviceDescriptors[thisDeviceIndex].layoutDef = thisControllerLayout;
-    Serial.print("found known gamepad: ");
-    Serial.println(thisControllerLayout->name);
+    SerialDebug<DEBUG_USB>("found known gamepad: ");
+    SerialDebugln<DEBUG_USB>(thisControllerLayout->name);
     if (!tuh_hid_receive_report(dev_addr, instance)) {
-      Serial.printf("Error: cannot request to receive report\r\n");
+      SerialDebug<DEBUG_USB>("Error: cannot request to receive report\r\n");
     }
     AllocateUSBGamepadStickChannels(&inChannelsPool, &USBDeviceDescriptors[thisDeviceIndex]);
   } else {
-    Serial.print("unknown HID device:");
-    Serial.println(itf_protocol);
+    SerialDebug<DEBUG_USB>("unknown HID device:");
+    SerialDebugln<DEBUG_USB>(static_cast<uint32_t>(itf_protocol));
   }
 }
 
@@ -1754,10 +1774,10 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
     descriptor -> vid = 0; //mark this descriptor as unused
     releaseUSBInputChannels(&inChannelsPool, descriptor, outChannels);
   } else {
-    Serial.print("Warning: unmounted device does not appear to have descriptor, check for erroneous logic");
+    SerialDebug<DEBUG_USB>("Warning: unmounted device does not appear to have descriptor, check for erroneous logic");
   }
   //TODO: free context for inputs if allocated
-  Serial.printf("HID device address = %d, instance = %d is unmounted\r\n", dev_addr, instance);
+  SerialDebugf<DEBUG_USB>("HID device address = %d, instance = %d is unmounted\r\n", dev_addr, instance);
 }
 
 void handle_keyboard_key(uint8_t dev_addr, uint8_t instance, hid_keyboard_report_t const *original_report) {
@@ -1767,14 +1787,14 @@ void handle_keyboard_key(uint8_t dev_addr, uint8_t instance, hid_keyboard_report
   for (uint8_t i = 0; i < 6; i++) {
     if (original_report->keycode[i] != 0) {
       if(original_report->keycode[i] >= 30 && original_report->keycode[i] <=39){ //number keys on keyboard
-        Serial.print("found key!");
+        SerialDebug<DEBUG_USB_REPORT>("found key!");
         if(original_report->keycode[i] == 39){ //0 on keyboard
           context->latestValue = 0;
         } else {
           context->latestValue = (original_report->keycode[i] - 29); //shift by 29 to properly align numerical values
         }
       }
-      Serial.print(original_report->keycode[i]);
+      SerialDebug<DEBUG_USB_REPORT>(static_cast<uint32_t>(original_report->keycode[i]));
       break;
     }
   }
@@ -1783,11 +1803,11 @@ void handle_keyboard_key(uint8_t dev_addr, uint8_t instance, hid_keyboard_report
 //report len always expected to be 64 bytes
 void handle_gamepad_input(USBInputDeviceDescriptor* thisDevice, uint8_t const *original_report, uint16_t len) {
   if(len > HID_REPORT_BUFSIZE){
-    Serial.print("ERROR: invalid report length, truncating");
+    SerialDebug<DEBUG_USB_REPORT>("ERROR: invalid report length, truncating");
     len = HID_REPORT_BUFSIZE;
   }
   if (!thisDevice || !original_report){
-    Serial.print("ERROR: device or original_report pointer is null");
+    SerialDebug<DEBUG_USB_REPORT>("ERROR: device or original_report pointer is null");
     return;
   };
   memcpy(thisDevice->latest_report, original_report, len);
@@ -1799,18 +1819,21 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
   USBInputDeviceDescriptor* thisDevice = findUSBDescriptorByDevAddrAndInstance(USBDeviceDescriptors, dev_addr, instance);
   if (thisDevice -> hidInterfaceType == USB_DESCRIPTOR_PROTOCOL_KEYBOARD){
     if (len != 8) {
-    Serial.printf("report len = %u NOT 8, not a keyboard!\r\n", len);
+    SerialDebugf<DEBUG_USB_REPORT>("report len = %u NOT 8, not a keyboard!\r\n", len);
     printBytesAsHex((char *)report, len);
     } else {
       //hid_keyboard_report_t remapped_report;
       handle_keyboard_key(dev_addr, instance, (hid_keyboard_report_t const *) report);
     }
   } else if (thisDevice -> hidInterfaceType == USB_DESCRIPTOR_PROTOCOL_GAMEPAD){
-    Serial.print("report:");
-    printBytesAsHex((char *)report, len);
+    //Serial.print("report:");
+    SerialDebug<DEBUG_USB_REPORT>("report:");
+    if(debug_level<DEBUG_USB_REPORT>()){
+      printBytesAsHex((char *)report, len);
+    }
     if(len!=thisDevice->layoutDef->reportLength){
       //TODO: optionally recognize and handle double-packets, such as captured "report:03 0F 00 A9 7F 7F 00 00 00 00 28 03 0F 00 A9 7F 7F 00 00 00 00 28 -- report len = 22 NOT 11, not matching configured gamepad!"
-      Serial.printf("report len = %u NOT %u, not matching configured gamepad!\r\n", len, thisDevice->layoutDef->reportLength);
+      SerialDebugf<DEBUG_USB_REPORT>("report len = %u NOT %u, not matching configured gamepad!\r\n", len, thisDevice->layoutDef->reportLength);
     } else {
       handle_gamepad_input(thisDevice, report, len);
     }
