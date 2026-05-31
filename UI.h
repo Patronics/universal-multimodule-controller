@@ -50,14 +50,15 @@ void printBytesAsHex(const char* data, int length);
 constexpr uint32_t DEBUG_BUTTONS    = 1u << 0;
 //NOTE: DEBUG_USB and DEBUG_USB_REPORT prints are invoked in tinyusb ISRs, which may cause reentrancy issues
 //      to improve reliability, DEBUG_USB and DEBUG_USB_REPORT should be disabled when not required
-constexpr uint32_t DEBUG_USB        = 1u << 1;
-constexpr uint32_t DEBUG_USB_REPORT = 1u << 2;
-constexpr uint32_t DEBUG_SAVELOAD   = 1u << 3;
-constexpr uint32_t DEBUG_LOG        = 1u << 4;
-constexpr uint32_t DEBUG_WARN       = 1u << 5;
-constexpr uint32_t DEBUG_ERROR      = 1u << 6;
-constexpr uint32_t DEBUG_CORE       = 1u << 7;
-constexpr uint32_t DEBUG_FS       = 1u << 8;
+constexpr uint32_t DEBUG_USB         = 1u << 1;
+constexpr uint32_t DEBUG_USB_REPORT  = 1u << 2;
+constexpr uint32_t DEBUG_SAVELOAD    = 1u << 3;
+constexpr uint32_t DEBUG_LOG         = 1u << 4;
+constexpr uint32_t DEBUG_WARN        = 1u << 5;
+constexpr uint32_t DEBUG_ERROR       = 1u << 6;
+constexpr uint32_t DEBUG_CORE        = 1u << 7;
+constexpr uint32_t DEBUG_FS          = 1u << 8;
+constexpr uint32_t DEBUG_MULTIMODULE = 1u << 8;
 
 //mostly just to satisfy compiler, DEBUG_FLAGS should be set in the main .ino file
 #ifndef DEBUG_FLAGS

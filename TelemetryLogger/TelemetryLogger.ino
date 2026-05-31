@@ -14,8 +14,8 @@ This script reads telemetry data from a 4-in-one multimodule.
 */
 
 //Note: DEBUG_FLAGS must be defined before including UI.h. See UI.h for list of valid flags
-#define DEBUG_FLAGS (DEBUG_USB|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
-//available flags: DEBUG_USB|DEBUG_USB_REPORT|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE
+#define DEBUG_FLAGS (DEBUG_USB|DEBUG_MULTIMODULE|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
+//available flags: DEBUG_USB|DEBUG_USB_REPORT|DEBUG_MULTIMODULE|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE
 
 #include "MultiModule.h"
 #include "ChannelManager.h"
@@ -67,7 +67,7 @@ struct persistent_settings {
 
 
 //Select active USB port, either 'A' or 'C', or 'Z' to prompt clean-up and shutdown of the ports
-volatile char requested_usb_port = 'A';
+volatile char requested_usb_port = 'C';
 char active_usb_port = requested_usb_port;
 
 OutputChannelDescriptor outChannels[MAX_CHANNELS]; //declare 16 item OutputChannelDescriptor array
@@ -1411,17 +1411,17 @@ int getTelemetry(){
     if (SerialModule.read() == 'M'){
       if(SerialModule.read() == 'P'){
         haveTelemetry = true;
-        Serial.println("found valid header!");
+        SerialDebugln<DEBUG_MULTIMODULE>("found valid header!");
         char type = SerialModule.read();
         char length = SerialModule.read();
         // Convert length byte to an integer for data capture
         uint8_t dataLength = (uint8_t)length;
-        Serial.print("type:");
-        Serial.println((int)type);
-        Serial.print("length:");
-        Serial.println(dataLength);
+        SerialDebug<DEBUG_MULTIMODULE>("type:");
+        SerialDebugln<DEBUG_MULTIMODULE>((int)type);
+        SerialDebug<DEBUG_MULTIMODULE>("length:");
+        SerialDebugln<DEBUG_MULTIMODULE>(dataLength);
         if (dataLength <= 0 || dataLength > MAX_TELEM_DATA_BYTES) {
-          Serial.println("Invalid data length!");
+          SerialDebugln<DEBUG_MULTIMODULE|DEBUG_WARN>("Invalid data length!");
           return -1; // return error status
         }
 
@@ -1431,19 +1431,21 @@ int getTelemetry(){
         lastTelemetryMillis = millis();
         delay(5); //give data time to populate
         if (SerialModule.available() < dataLength) {
-          Serial.println("Not enough data available!"); //note: if this occurs often, increase the delay
-          Serial.print("expected ");
-          Serial.print(dataLength);
-          Serial.print(" bytes but only ");
-          Serial.print(SerialModule.available());
-          Serial.println(" available.");
+          SerialDebugln<DEBUG_MULTIMODULE|DEBUG_WARN>("Not enough data available!"); //note: if this occurs often, increase the delay
+          SerialDebug<DEBUG_MULTIMODULE|DEBUG_WARN>("expected ");
+          SerialDebug<DEBUG_MULTIMODULE|DEBUG_WARN>(dataLength);
+          SerialDebug<DEBUG_MULTIMODULE|DEBUG_WARN>(" bytes but only ");
+          SerialDebug<DEBUG_MULTIMODULE|DEBUG_WARN>(SerialModule.available());
+          SerialDebugln<DEBUG_MULTIMODULE|DEBUG_WARN>(" available.");
           return -2;
         }
         
         SerialModule.readBytes(capturedData, dataLength);
         capturedData[dataLength] = '\0'; // Null-terminate the string
-        Serial.print("Captured Data in Hex: ");
-        printBytesAsHex(capturedData, dataLength);
+        SerialDebug<DEBUG_MULTIMODULE>("Captured Data in Hex: ");
+        if(debug_level<DEBUG_MULTIMODULE>()){
+          printBytesAsHex(capturedData, dataLength);
+        }
         if (type == MULTI_MODULE_STATUS_TYPE && dataLength >= sizeof(MultiModuleStatus)){
           memcpy(&moduleStatus, capturedData, sizeof(MultiModuleStatus));
           Serial.println("MultiModule Status data found");
