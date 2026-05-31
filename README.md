@@ -16,7 +16,7 @@ Pico PIO USB by Sekigon-gonnoc
 
 You can program it with the Arduino IDE directly, adjust the menu options as described at the top of `GamesteerRC.ino`.
 
-Alternatively, for advanced usage and debugging, you can use the
+Alternatively, for advanced usage and debugging, you can install the [Arduino-CLI](https://docs.arduino.cc/arduino-cli/) and use the scripts as described below: 
 
 ## Build & Debug Scripts
 
@@ -78,7 +78,7 @@ Flashes firmware using the **UF2 bootloader (USB mode)**.
 ---
 
 ### Typical usage
-
+Call the scripts from the top level of the directory, such as `./scripts/build.sh`
 - **Development (debugging):** `debug-build.sh` → `flash.sh` → `openocd.sh` → *(in a second terminal session)* `gdb.sh`
 - **Quick standalone flash:** `build.sh → upload.sh`
 
@@ -91,3 +91,4 @@ break panic
 continue
 
 ```
+
