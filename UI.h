@@ -58,7 +58,8 @@ constexpr uint32_t DEBUG_WARN        = 1u << 5;
 constexpr uint32_t DEBUG_ERROR       = 1u << 6;
 constexpr uint32_t DEBUG_CORE        = 1u << 7;
 constexpr uint32_t DEBUG_FS          = 1u << 8;
-constexpr uint32_t DEBUG_MULTIMODULE = 1u << 8;
+constexpr uint32_t DEBUG_MULTIMODULE = 1u << 9;
+constexpr uint32_t DEBUG_TRANSMIT    = 1u << 10;
 
 //mostly just to satisfy compiler, DEBUG_FLAGS should be set in the main .ino file
 #ifndef DEBUG_FLAGS

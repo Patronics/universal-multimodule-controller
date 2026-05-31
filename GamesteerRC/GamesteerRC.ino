@@ -14,8 +14,9 @@ This script reads telemetry data from a 4-in-one multimodule.
 */
 
 //Note: DEBUG_FLAGS must be defined before including UI.h. See UI.h for list of valid flags
-#define DEBUG_FLAGS (DEBUG_USB|DEBUG_MULTIMODULE|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
-//available flags: DEBUG_USB|DEBUG_USB_REPORT|DEBUG_MULTIMODULE|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE
+#define DEBUG_FLAGS (DEBUG_USB|DEBUG_USB_REPORT|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
+//DEBUG_MULTIMODULE
+//available flags: DEBUG_USB|DEBUG_USB_REPORT|DEBUG_TRANSMIT|DEBUG_MULTIMODULE|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE
 
 #include "MultiModule.h"
 #include "ChannelManager.h"
@@ -184,6 +185,7 @@ uint8_t currentActiveProtocol = 0;
 uint8_t currentActiveSubProtocol = 0;
 
 bool transmitActive = false;
+bool failsafeActive = true;
 bool haveTelemetry = false;
 
 
@@ -461,7 +463,9 @@ void updateChannelValues(MultiProtocolStream* s){
 void transmit(MultiProtocolStream* s, uint8_t aditional_bytes){
   uint8_t* byteArray = (uint8_t*)s;
   SerialModule.write(byteArray, (sizeof(MultiProtocolStream)-(9-aditional_bytes)));
-  printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
+  if(debug_level<DEBUG_TRANSMIT>()){
+    printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
+  }
 }
 
 void drawMenuItem(const char* label, int thisPageIndex, int selectedMenu, int currentMenu) {
@@ -596,8 +600,8 @@ void setupMenuLayout(){
   menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
-  strlcpy(menuItems[menuNumber].label, "Failsafe Value", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  strlcpy(menuItems[menuNumber].label, "Set Failsafes", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = failsafeSnapshotMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
@@ -697,20 +701,30 @@ void activateTxMenuItemHandler(int index, NavButton btnPressed){
   } else if(btnPressed == RIGHT_BUTTON){
     transmitActive = false;
     updated=true;
+  } else if(btnPressed == DOWN_BUTTON){
+    failsafeActive = false;
+    updated=true;
+  } else if(btnPressed == UP_BUTTON){
+    failsafeActive = true;
+    updated=true;
   }
   if(updated || btnPressed == OK_BUTTON){
-    u8g2.setCursor(0,50);
+    u8g2.setCursor(0,35);
     if(transmitActive){
-      u8g2.print("TX active  ");
+      u8g2.print("TX Active  ");
     } else {
-      u8g2.print("TX inactive");
+      u8g2.print("TX Inactive");
+    }
+    u8g2.setCursor(60,35);
+    if(failsafeActive){
+      u8g2.print("Failsafe Active  ");
+    } else {
+      u8g2.print("Failsafe Inactive");
     }
     u8g2.setCursor(0,56);
-    u8g2.print("left: activate");
-    u8g2.setCursor(DISPLAY_PIXEL_WIDTH/2,56);
-    u8g2.print("right: disable");
+    u8g2.print("left/right: toggle TX");
     u8g2.setCursor(0,62);
-    u8g2.print("Press back to return to menu");
+    u8g2.print("up/down: toggle failsafe");
   } else if (btnPressed == BACK_BUTTON){
     clearMenuContents();
   }
@@ -1183,6 +1197,16 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
   u8g2.print(evaluateSingleChannelMixerValue(activeMixer->currentlyEditingMixer, false));
 }
 
+void failsafeSnapshotMenuItemHandler(int index, NavButton btnPressed){
+  bool updated=false;
+  if (btnPressed == DOWN_BUTTON){
+    updated=true;
+    for(int i=0; i < MAX_CHANNELS; i++){
+      
+    }
+  }
+}
+
 void modelSaveLoadMenuItemHandler(int index, NavButton btnPressed){
   bool updated=false;
   if (btnPressed == LEFT_BUTTON){
@@ -1448,18 +1472,20 @@ int getTelemetry(){
         }
         if (type == MULTI_MODULE_STATUS_TYPE && dataLength >= sizeof(MultiModuleStatus)){
           memcpy(&moduleStatus, capturedData, sizeof(MultiModuleStatus));
-          Serial.println("MultiModule Status data found");
-          printMultiModuleStatus(moduleStatus);
+          SerialDebugln<DEBUG_MULTIMODULE>("MultiModule Status data found");
+          if(debug_level<DEBUG_MULTIMODULE>()){
+            printMultiModuleStatus(moduleStatus);
+          }
         } else if (type == FLYSKY_AFHDS2_TELEM_STATUS_TYPE){
-          Serial.println("Flysky AFHDS2 telemetry data found"); //Flysky AFHDS2 telemetry type 0xAA
-          Serial.print("RSSI: ");
-          Serial.println((int)capturedData[0]);
+          SerialDebugln<DEBUG_MULTIMODULE>("Flysky AFHDS2 telemetry data found"); //Flysky AFHDS2 telemetry type 0xAA
+          SerialDebug<DEBUG_MULTIMODULE>("RSSI: ");
+          SerialDebugln<DEBUG_MULTIMODULE>((int)capturedData[0]);
           u8g2.drawStr(84, 5, "RSSI:");
           u8g2.setCursor(104, 5);
           u8g2.print((int)capturedData[0]);
           //TODO: parse the rest of this telemetry
         } else {
-          Serial.print("unknown telemetry type");
+          SerialDebugln<DEBUG_MULTIMODULE|DEBUG_LOG>("unknown telemetry type");
         }
         //update i2c display
         u8g2.sendBuffer();
@@ -1470,8 +1496,8 @@ int getTelemetry(){
   //check remaining serial data in buffer:
   int bytesInBuffer = SerialModule.available();
   if(bytesInBuffer > (SERIAL_MODULE_BUFFER_SIZE/2)){
-    Serial.print("WARN: SerialModule Buf half full to ");
-    Serial.println(bytesInBuffer);
+    SerialDebug<DEBUG_MULTIMODULE|DEBUG_WARN>("WARN: SerialModule Buf half full to ");
+    SerialDebug<DEBUG_MULTIMODULE|DEBUG_WARN>(bytesInBuffer);
   }
   return 0;
 }
