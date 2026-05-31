@@ -181,6 +181,7 @@ typedef struct {
     uint8_t deviceNum;          //descriptor number within USBDeviceDescriptors (max of MAX_USB_DEVICE_DESCRIPTORS)
     InputChannelDescriptor *inputChannels[MAX_INPUT_CHANNELS_PER_USB_DEVICE]; //array of pointers to inputs owned by this USB device
     const USBGamepadLayoutDefinition *layoutDef; //pointer to the relevant layout definition
+    void* contextPointer; //pointer to the device-type-specific context, used for individual input devices, to free when USB device disconnected
 } USBInputDeviceDescriptor;
 
 typedef struct {

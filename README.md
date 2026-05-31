@@ -65,7 +65,7 @@ Launches **GDB for source-level debugging**.
 - Connects to OpenOCD (`localhost:3333`)
 - Uses the project `.elf`
 - Use for breakpoints, stepping, and inspecting state
-
+- See debugging section below for additional details
 ---
 
 ### upload.sh  
@@ -81,3 +81,13 @@ Flashes firmware using the **UF2 bootloader (USB mode)**.
 
 - **Development (debugging):** `debug-build.sh` → `flash.sh` → `openocd.sh` → *(in a second terminal session)* `gdb.sh`
 - **Quick standalone flash:** `build.sh → upload.sh`
+
+## Debugging
+For debugging, once OpenOCD and GDB are active, within GDB run 
+```gdb
+target extended-remote :3333
+monitor reset halt
+break panic
+continue
+
+```

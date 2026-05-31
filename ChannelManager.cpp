@@ -348,7 +348,7 @@ InputChannelDescriptor *AllocateUSBKeyboardNumberInputChannel(InputDescriptorPoo
   newInput->inputFunctionType = INPUT_FUNCTION_USB_KB_NUMBER;
   newInput->getLatestInputData = USBKeyboardNumberDataProducer;
   newInput->configureChannelInput = NULL;
-  newInput->cleanupInputContextFn = SimpleFreeInputContext;
+  newInput->cleanupInputContextFn = NULL;
   newInput->id = id;
   newInput->context = newContext;
   descriptor->inputChannels[id] = newInput;
@@ -365,7 +365,7 @@ InputChannelDescriptor *AllocateUSBGamepadStickInputChannel(InputDescriptorPool 
   newInput->inputFunctionType = INPUT_FUNCTION_USB_GAMEPAD_STICK;
   newInput->getLatestInputData = USBGamepadAnalogDataProducer;
   newInput->configureChannelInput = NULL;
-  newInput->cleanupInputContextFn = SimpleFreeInputContext;
+  newInput->cleanupInputContextFn = NULL;
   newInput->id = id;
   newInput->context = context;
   return newInput;
@@ -373,6 +373,7 @@ InputChannelDescriptor *AllocateUSBGamepadStickInputChannel(InputDescriptorPool 
 
 USBGamepadContextType* AllocateUSBGamepadStickChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor * descriptor){
     USBGamepadContextType *newContext = (USBGamepadContextType *)malloc(sizeof (USBGamepadContextType));
+    descriptor->contextPointer = newContext;
     for(int i=0; i<descriptor->layoutDef->analogInputCount; i++){
       //const int stickIndexes[] = {1, 2, 3, 4, 8, 9}; //TODO: replace hardcoded indexes with values as configured by controller type in controllerData.cpp
       char buf[INPUT_NAME_LEN];
@@ -410,12 +411,14 @@ void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor
           outChannelsArr[j].inputChannelDescriptor = Pool_FindByIdAndType(pool, j, INPUT_FUNCTION_CONFIG_VALUE);
         }
       }
+      //cleanup any data from the input function (generally unused)
       if (desc -> inputChannels[i] -> cleanupInputContextFn != NULL){
         desc -> inputChannels[i] -> cleanupInputContextFn(desc -> inputChannels[i]->context, desc -> inputChannels[i]->inputFunctionType);
       }
       Pool_Release(pool, desc -> inputChannels[i]);
     }
   }
+  free(desc->contextPointer);
 }
 
 int ends_with(const char *str, const char *suffix) {
