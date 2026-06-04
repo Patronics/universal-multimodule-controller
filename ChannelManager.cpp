@@ -7,6 +7,8 @@
 #include "MultiModule.h"
 #include "UI.h"
 
+extern InputChannelDescriptor* failsafeChannels[MAX_CHANNELS];
+
 static int clamp(int v, int lo, int hi){
   if (v < lo) return lo;
   if (v > hi) return hi;
@@ -14,46 +16,50 @@ static int clamp(int v, int lo, int hi){
 }
 
 //use DataProducer to get latest input data
-int getLatestInputData(InputChannelDescriptor* input){
-  return input->getLatestInputData(input->context, input->id);
+int getLatestInputData(InputChannelDescriptor* input,int outChannelId){
+  if(input == NULL){ //invalid input, null ptr
+    SerialDebug<DEBUG_WARN|DEBUG_ERROR>("ERROR: tried to read input data from null pointer");
+    return 0;
+  }
+  return input->getLatestInputData(input->context, input->id, outChannelId);
 }
 
 // Interpret context as an integer value stored via an integer-sized pointer.
 // always returns the value specified by its context directly
 // compatible with INPUT_FUNCTION_CONST_FIXED and INPUT_FUNCTION_CONFIG_VALUE input types
-int fixedInputDataProducer(void* context, int id){
+int fixedInputDataProducer(void* context, int id, int outChannelId){
   intptr_t fixedValue = (intptr_t)context;
   (void)id; // id unused in this example, supress warning with no-op
   return (int)fixedValue;
 }
 
 //a sane default input, sets the channel output to its midpoint
-int defaultInputDataProducer(void* context, int id){
+int defaultInputDataProducer(void* context, int id, int outChannelId){
   (void)context; // explicitly ignore incoming context
   // Provide a consistent hardcoded value for fixedInputDataProducer to return.
   // Use intptr_t cast so we can pass an integer via the void* context parameter.
   const int midpoint = 1024;
-  return fixedInputDataProducer((void *)(intptr_t)midpoint, id);
+  return fixedInputDataProducer((void *)(intptr_t)midpoint, id, outChannelId);
 }
 
-int analogReadDataProducer(void* context, int id){
+int analogReadDataProducer(void* context, int id, int outChannelId){
   intptr_t inputPin = (intptr_t)context;
   return analogRead(inputPin);
 }
 
-int USBKeyboardNumberDataProducer(void* context, int id){
+int USBKeyboardNumberDataProducer(void* context, int id, int outChannelId){
   USBKeyboardContextType *usbKeyboardContext = (USBKeyboardContextType *) context;
   return usbKeyboardContext->latestValue;
 }
 
-int USBGamepadAnalogDataProducer(void* context, int id){
+int USBGamepadAnalogDataProducer(void* context, int id, int outChannelId){
   USBGamepadContextType *usbGamepadContext = (USBGamepadContextType *) context;
   return usbGamepadContext->parentDeviceDescriptor->latest_report[id];
 }
 
 int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1){
   if(channel1){
-    int channel1Value = getLatestInputData(mixer->inputChannel1Descriptor);
+    int channel1Value = getLatestInputData(mixer->inputChannel1Descriptor, -1);
     channel1Value = channel1Value * mixer->channel1Scale/100;
     channel1Value = channel1Value + mixer->channel1Offset;
     if(mixer->channel1Invert){
@@ -62,7 +68,7 @@ int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1
     return channel1Value;
   }
   //else channel 2:
-  int channel2Value = getLatestInputData(mixer->inputChannel2Descriptor);
+  int channel2Value = getLatestInputData(mixer->inputChannel2Descriptor, -1);
   channel2Value = channel2Value * mixer->channel2Scale/100;
   channel2Value = channel2Value + mixer->channel2Offset;
   if(mixer->channel2Invert){
@@ -72,12 +78,20 @@ int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1
 }
 
 int evaluateMixerValue(MixerChannelDescriptor* mixer){
+  if(!mixer->inputChannel1Descriptor){
+    //invalid input/input not present, return failsafe instead
+    return INT_MAX;
+  }
   int channel1Value = evaluateSingleChannelMixerValue(mixer, true);
   if(mixer->operation == MIXER_OP_CH1_ONLY){
     clamp(channel1Value, mixer->mixerResultDescriptor->minRange, mixer->mixerResultDescriptor->maxRange);
     return channel1Value;
   }
   //otherwise use both channel 1 and channel 2 values
+  if(!mixer->inputChannel2Descriptor){
+    //invalid input/input not present, return failsafe instead
+    return INT_MAX;
+  }
   int channel2Value = evaluateSingleChannelMixerValue(mixer, false);
   int mixedValue;
   switch (mixer->operation){
@@ -118,9 +132,21 @@ int evaluateMixerValue(MixerChannelDescriptor* mixer){
   return mixedValue;
 }
 
-int mixerDataProducer(void* context, int id){
-  //TODO: implement
-  return evaluateMixerValue((MixerChannelDescriptor *)context);
+int mixerDataProducer(void* context, int id, int outChannelId){
+  MixerChannelDescriptor *mixerContext = ((MixerChannelDescriptor *)context);
+  int value = evaluateMixerValue(mixerContext);
+  if (value == INT_MAX){
+    //invalid value, return failsafe instead
+    SerialDebug<DEBUG_WARN>("WARN: mixer has null input, attempting fallback");
+    if(outChannelId == -1){ //no assigned output channel, likely in the mixers view
+      SerialDebug<DEBUG_WARN>("WARN: no assigned output channel for mixer");
+      return 0;
+    }
+    InputChannelDescriptor * failsafe = failsafeChannels[outChannelId];
+    return failsafe->getLatestInputData(failsafe->context, failsafe->id,outChannelId);
+  }
+  return value;
+
 }
 
 const InputChannelDescriptor defaultInputDescriptor = {
@@ -312,7 +338,7 @@ void initDefaultInputDescriptors(InputDescriptorPool *pool){
   AllocADCInput(pool, "ADC7", A7);
 }
 
-void initMixerInputDescriptors(InputDescriptorPool *inputChannelsPool, MixerChannelDescriptor *mixerChannels){
+void initMixerInputDescriptors(InputDescriptorPool *inputChannelsPool, MixerChannelDescriptor (&mixerChannels)[MAX_MIXERS]){
   for (int i=0; i<MAX_MIXERS; i++){
     mixerChannels[i].id = i;
     mixerChannels[i].inputChannel1Descriptor = Pool_FindByIdAndType(inputChannelsPool, 0, INPUT_FUNCTION_CONST_FIXED);
@@ -325,7 +351,6 @@ void initMixerInputDescriptors(InputDescriptorPool *inputChannelsPool, MixerChan
     mixerChannels[i].channel1Invert = false;
     mixerChannels[i].channel2Invert = false;
     snprintf(mixerChannels[i].name,INPUT_NAME_LEN, "Mix %d", i);
-    //TODO: populate rest of mixerChannels[i]'s values
     mixerChannels[i].mixerResultDescriptor = AllocDefaultMixerInput(inputChannelsPool, i, &mixerChannels[i]);
   }
 }
@@ -413,7 +438,7 @@ int getFirstFreeUSBInputDescriptorIndex(USBInputDeviceDescriptor* arr){
   return -1;
 }
 
-void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc, OutputChannelDescriptor* outChannelsArr, InputChannelDescriptor* (&failsafeChannels)[MAX_CHANNELS]){
+void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc, OutputChannelDescriptor (&outChannelsArr)[MAX_CHANNELS], MixerChannelDescriptor (&mixerChannels)[MAX_MIXERS], InputChannelDescriptor* (&failsafeChannels)[MAX_CHANNELS]){
   SerialDebug<DEBUG_USB>("Freeing USB INPUT");
   for(int i=0; i < MAX_INPUT_CHANNELS_PER_USB_DEVICE; i++){
     if(desc -> inputChannels[i] != NULL){
@@ -424,6 +449,20 @@ void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor
           SerialDebug<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>("Restoring active channel ");
           SerialDebug<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>(j);
           SerialDebugln<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>(" to failsafe value");
+        }
+      }
+      for(int j=0; j< MAX_MIXERS; j++){
+        if(mixerChannels[j].inputChannel1Descriptor == desc -> inputChannels[i]){
+          mixerChannels[j].inputChannel1Descriptor = NULL;
+          SerialDebug<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>("Restoring mixer channel ");
+          SerialDebug<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>(j);
+          SerialDebugln<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>("(input 1) to failsafe value");
+        }
+        if(mixerChannels[j].inputChannel2Descriptor == desc -> inputChannels[i]){
+          mixerChannels[j].inputChannel2Descriptor = NULL;
+          SerialDebug<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>("Restoring mixer channel ");
+          SerialDebug<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>(j);
+          SerialDebugln<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>("(input 2) to failsafe value");
         }
       }
       //cleanup any data from the input function (generally unused)

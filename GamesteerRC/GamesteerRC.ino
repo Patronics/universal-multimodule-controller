@@ -185,7 +185,7 @@ uint8_t currentActiveProtocol = 0;
 uint8_t currentActiveSubProtocol = 0;
 
 bool transmitActive = false;
-bool failsafeActive = true;
+bool failsafeActive = false;
 bool haveTelemetry = false;
 
 
@@ -416,8 +416,8 @@ void loop() {
     transmit(&streamOut, streamOutAdditionalProtocolDataLen);
   }
 
-  //Serial.print("loop time: ");
-  //Serial.println(millis()-lastLoopMillis);
+  SerialDebug<DEBUG_TIME>("loop time: ");
+  SerialDebugln<DEBUG_TIME>(millis()-lastLoopMillis);
   lastLoopMillis = millis();
 }
 
@@ -430,7 +430,7 @@ static int clamp(int v, int lo, int hi){
 int getOutputChannelValue(int channelIndex){
   OutputChannelDescriptor* outChannel = &outChannels[channelIndex];
   InputChannelDescriptor* inChannel = outChannel->inputChannelDescriptor;
-  int value = getLatestInputData(inChannel);
+  int value = getLatestInputData(inChannel, channelIndex);
   //scale values as needed
   if(inChannel->minRange != outChannel->minRange || inChannel->maxRange != outChannel->maxRange){
     int inMin = inChannel->minRange;
@@ -454,9 +454,20 @@ int getOutputChannelValue(int channelIndex){
   return value;
 }
 
+int getFailsafeChannelValue(int channelIndex){
+  InputChannelDescriptor* thisFailsafe = failsafeChannels[channelIndex];
+  int value = thisFailsafe->getLatestInputData(thisFailsafe->context, thisFailsafe->id, channelIndex);
+  return value;
+}
+
 void updateChannelValues(MultiProtocolStream* s){
   for(int i=0; i<MAX_CHANNELS; i++){
-    int value = getOutputChannelValue(i);
+    int value;
+    if(failsafeActive){
+      value = getFailsafeChannelValue(i);
+    } else {
+      value = getOutputChannelValue(i);
+    }
     //Serial.print("setting value:");
     //Serial.print(value);
     setChannelValue(s, i, value);
@@ -465,8 +476,7 @@ void updateChannelValues(MultiProtocolStream* s){
 
 void updateFailsafeValues(MultiProtocolStream* s){
   for(int i=0; i<MAX_CHANNELS; i++){
-    InputChannelDescriptor* thisFailsafe = failsafeChannels[i];
-    int value =  thisFailsafe->getLatestInputData(thisFailsafe->context, thisFailsafe->id);
+    int value = getFailsafeChannelValue(i);
     setChannelValue(s, i, value);
   }
   s->header.is_failsafe = 1;
@@ -952,7 +962,7 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
     InputChannelDescriptor* currentInputDescriptor = outChannels[menuSubpageIndex].inputChannelDescriptor;
     u8g2.setCursor(0,56);
     u8g2.print("value: '");
-    u8g2.print(getLatestInputData(currentInputDescriptor));
+    u8g2.print(getLatestInputData(currentInputDescriptor, menuSubpageIndex));
     u8g2.print("' from:    ");
   }
   if (updated || btnPressed == OK_BUTTON){
@@ -969,7 +979,7 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
     u8g2.print("\"                ");
     u8g2.setCursor(0,56);
     u8g2.print("value: '");
-    u8g2.print(getLatestInputData(currentInputDescriptor));
+    u8g2.print(getLatestInputData(currentInputDescriptor, menuSubpageIndex));
     u8g2.print("' from:    ");
     u8g2.setCursor(0,62);
     u8g2.print("input ch");
@@ -1139,62 +1149,82 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
     u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_SOURCE);
     u8g2PrintPadding();
     u8g2.print("A:");
-    u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->inputFunctionType, DEC);
-    u8g2.print("_");
-    u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->id, DEC);
-    u8g2.setCursor(0, 39);
-    u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->name);
-    //u8g2.print("\"Dualsense 5-LY\"");
-    //u8g2.setCursor(64, 56);
-    //u8g2.print(" L/R: Edit mode");
-    u8g2.setCursor(0, 45);
-    u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_SCALE);
-    u8g2.print("Scale:");
-    u8g2.print(activeMixer->currentlyEditingMixer->channel1Scale);
-    u8g2.print(" ");
-    u8g2.setCursor(0,51);
-    u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_INVERT);
-    u8g2.print("Invert:");
-    u8g2.print(" ");
-    if(activeMixer->currentlyEditingMixer->channel1Invert){
-      u8g2.print("yes ");
+    if(activeMixer->currentlyEditingMixer->inputChannel1Descriptor == NULL){
+      u8g2.print("NULL");
+        u8g2.setCursor(0, 39);
+        u8g2.print("Source not");
+        u8g2.setCursor(0, 45);
+        u8g2.print("present");
+        u8g2.setCursor(0,52);
+        u8g2.print("failsafe active");
     } else {
-      u8g2.print("no ");
+      u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->inputFunctionType, DEC);
+      u8g2.print("_");
+      u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->id, DEC);
+      u8g2.setCursor(0, 39);
+      u8g2.print(activeMixer->currentlyEditingMixer->inputChannel1Descriptor->name);
+      //u8g2.print("\"Dualsense 5-LY\"");
+      //u8g2.setCursor(64, 56);
+      //u8g2.print(" L/R: Edit mode");
+      u8g2.setCursor(0, 45);
+      u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_SCALE);
+      u8g2.print("Scale:");
+      u8g2.print(activeMixer->currentlyEditingMixer->channel1Scale);
+      u8g2.print(" ");
+      u8g2.setCursor(0,51);
+      u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_INVERT);
+      u8g2.print("Invert:");
+      u8g2.print(" ");
+      if(activeMixer->currentlyEditingMixer->channel1Invert){
+        u8g2.print("yes ");
+      } else {
+        u8g2.print("no ");
+      }
+      u8g2.setCursor(0,58);
+      u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_OFFSET);
+      u8g2.print("Offset:");
+      u8g2.print(activeMixer->currentlyEditingMixer->channel1Offset);
+      u8g2.print(" ");
     }
-    u8g2.setCursor(0,58);
-    u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_OFFSET);
-    u8g2.print("Offset:");
-    u8g2.print(activeMixer->currentlyEditingMixer->channel1Offset);
-    u8g2.print(" ");
     if(activeMixer->currentlyEditingMixer->operation != MIXER_OP_CH1_ONLY){
       u8g2.setCursor(66,32);
       u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_SOURCE);
       u8g2PrintPadding();
       u8g2.print("B:");
-      u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->inputFunctionType, DEC);
-      u8g2.print("_");
-      u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->id, DEC);
-      u8g2.setCursor(66, 39);
-      u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->name);
-      u8g2.setCursor(85, 45);
-      u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_SCALE);
-      u8g2.print("Scale:");
-      u8g2.print(activeMixer->currentlyEditingMixer->channel2Scale);
-      u8g2.print(" ");
-      u8g2.setCursor(85,51);
-      u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_INVERT);
-      u8g2.print("Invert:");
-      u8g2.print(" ");
-      if(activeMixer->currentlyEditingMixer->channel2Invert){
-        u8g2.print("yes ");
+      if(activeMixer->currentlyEditingMixer->inputChannel2Descriptor == NULL){
+        u8g2.print("NULL");
+        u8g2.setCursor(66, 39);
+        u8g2.print("Source not");
+        u8g2.setCursor(66, 45);
+        u8g2.print("present");
+        u8g2.setCursor(0,52);
+        u8g2.print("failsafe active");
       } else {
-        u8g2.print("no ");
+        u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->inputFunctionType, DEC);
+        u8g2.print("_");
+        u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->id, DEC);
+        u8g2.setCursor(66, 39);
+        u8g2.print(activeMixer->currentlyEditingMixer->inputChannel2Descriptor->name);
+        u8g2.setCursor(85, 45);
+        u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_SCALE);
+        u8g2.print("Scale:");
+        u8g2.print(activeMixer->currentlyEditingMixer->channel2Scale);
+        u8g2.print(" ");
+        u8g2.setCursor(85,51);
+        u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_INVERT);
+        u8g2.print("Invert:");
+        u8g2.print(" ");
+        if(activeMixer->currentlyEditingMixer->channel2Invert){
+          u8g2.print("yes ");
+        } else {
+          u8g2.print("no ");
+        }
+        u8g2.setCursor(85,58);
+        u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_OFFSET);
+        u8g2.print("Offset:");
+        u8g2.print(activeMixer->currentlyEditingMixer->channel2Offset);
+        u8g2.print(" ");
       }
-      u8g2.setCursor(85,58);
-      u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_OFFSET);
-      u8g2.print("Offset:");
-      u8g2.print(activeMixer->currentlyEditingMixer->channel2Offset);
-      u8g2.print(" ");
     }
   } //end if(updated)
   //update values in real-time even if no changes to menu
@@ -1203,7 +1233,7 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
   u8g2.setDrawColor(1);
   u8g2.setCursor(42,63);
   u8g2.print("Value: ");
-  u8g2.print(getLatestInputData(activeMixer->currentlyEditingMixer->mixerResultDescriptor));
+  u8g2.print(getLatestInputData(activeMixer->currentlyEditingMixer->mixerResultDescriptor, -1));
   u8g2.setCursor(2,63);
   u8g2.print(evaluateSingleChannelMixerValue(activeMixer->currentlyEditingMixer, true));
   u8g2.setCursor(95,63);
@@ -1216,8 +1246,8 @@ void failsafeSnapshotMenuItemHandler(int index, NavButton btnPressed){
     if(i%3 == 0){
       u8g2.setCursor(0, 35+7*(i/3));
     }
-    InputChannelDescriptor* thisFailsafe = failsafeChannels[i];
-    drawLiveChannelMultiBar(i, thisFailsafe->getLatestInputData(thisFailsafe->context, thisFailsafe->id));
+    int failsafeValue = getFailsafeChannelValue(i);
+    drawLiveChannelMultiBar(i, failsafeValue);
   }
   u8g2.setCursor(0, 63);
   u8g2.print("down: update failsafe values");
@@ -1356,9 +1386,9 @@ void saveModelToFileAtIndex(int index){
   JsonArray failsafesArray = newModelDoc["failsafes"].to<JsonArray>();
   SerialDebugln<DEBUG_SAVELOAD>("saving failsafe values:");
   for(int i=0; i<MAX_CHANNELS; i++){
-    SerialDebug<DEBUG_SAVELOAD>(failsafeChannels[i]->getLatestInputData(failsafeChannels[i]->context, i));
+    SerialDebug<DEBUG_SAVELOAD>(failsafeChannels[i]->getLatestInputData(failsafeChannels[i]->context, i, i));
     SerialDebug<DEBUG_SAVELOAD>(" ");
-    failsafesArray[i] = failsafeChannels[i]->getLatestInputData(failsafeChannels[i]->context, i);
+    failsafesArray[i] = failsafeChannels[i]->getLatestInputData(failsafeChannels[i]->context, i, i);
   }
   if(debug_level<DEBUG_SAVELOAD>()){
     serializeJson(newModelDoc, Serial); //print json to USB Serial log
@@ -1458,7 +1488,7 @@ bool loadModelFromFileAtIndex(int index){
       SerialDebug<DEBUG_SAVELOAD>("\nloading failsafe ");
       SerialDebug<DEBUG_SAVELOAD>(i);
       SerialDebug<DEBUG_SAVELOAD>(": ");
-      SerialDebugln<DEBUG_SAVELOAD>((int)failsafesArray[i]);
+      SerialDebug<DEBUG_SAVELOAD>((int)failsafesArray[i]);
       failsafeChannels[i]->configureChannelInput(failsafeChannels[i],failsafesArray[i]);
     }
     updateFailsafeValues(&streamOut);
@@ -1955,7 +1985,7 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
   USBInputDeviceDescriptor* descriptor = findUSBDescriptorByDevAddrAndInstance(USBDeviceDescriptors, dev_addr, instance);
   if(descriptor != NULL){
     descriptor -> vid = 0; //mark this descriptor as unused
-    releaseUSBInputChannels(&inChannelsPool, descriptor, outChannels, failsafeChannels);
+    releaseUSBInputChannels(&inChannelsPool, descriptor, outChannels, mixerChannels, failsafeChannels);
   } else {
     SerialDebug<DEBUG_USB>("Warning: unmounted device does not appear to have descriptor, check for erroneous logic");
   }

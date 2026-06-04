@@ -45,7 +45,8 @@ typedef enum {
 typedef struct InputChannelDescriptor InputChannelDescriptor;
 
 //the input function to get updated data. If id is used when generating a value, any given function MUST only be used to handle a single type as defined by InputFunctionType
-typedef int (*GetChannelInputFn)(void* context, int id);
+//outChannelId must be a valid channel number or -1. It should be used only as required for populating fallback values
+typedef int (*GetChannelInputFn)(void* context, int id, int outChannelId);
 
 //function for configuring settings for a given input. If no settings available, null ptr instead
 typedef bool (*ConfigChannelInputFn)(struct InputChannelDescriptor *channel, int value);
@@ -211,12 +212,12 @@ InputChannelDescriptor* findInputDescriptorWithTypeNameAndId(InputDescriptorPool
 void initDefaultInputDescriptors(InputDescriptorPool *pool);
 void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelPool, MixerChannelDescriptor (&mixerChannels)[MAX_MIXERS], InputChannelDescriptor* (&failsafeChannels)[MAX_CHANNELS]);
 void assignInputChannelDescriptor(OutputChannelDescriptor *outputChannel, InputChannelDescriptor *inputChannel);
-int getLatestInputData(InputChannelDescriptor* input); //use DataProducer to get latest input data
+int getLatestInputData(InputChannelDescriptor* input, int outChannelId); //use DataProducer to get latest input data
 int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1);
-int defaultInputDataProducer(void* context, int id);
-int fixedInputDataProducer(void* context, int id);
+int defaultInputDataProducer(void* context, int id, int outChannelId);
+int fixedInputDataProducer(void* context, int id, int outChannelId);
 int getFirstFreeUSBInputDescriptorIndex(USBInputDeviceDescriptor* arr);
-void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc, OutputChannelDescriptor *outChannelsArr, InputChannelDescriptor* (&failsafeChannels)[MAX_CHANNELS]);
+void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc, OutputChannelDescriptor (&outChannelsArr)[MAX_CHANNELS], MixerChannelDescriptor (&mixerChannels)[MAX_MIXERS], InputChannelDescriptor* (&failsafeChannels)[MAX_CHANNELS]);
 USBInputDeviceDescriptor* findUSBDescriptorByDevAddrAndInstance(USBInputDeviceDescriptor* arr, uint8_t dev_addr, uint8_t instance);
 InputChannelDescriptor *AllocateUSBKeyboardNumberInputChannel(InputDescriptorPool *pool, int id, const char* name, USBInputDeviceDescriptor * descriptor);
 USBGamepadContextType* AllocateUSBGamepadStickChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor * descriptor);
