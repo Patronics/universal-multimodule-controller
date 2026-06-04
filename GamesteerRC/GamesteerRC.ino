@@ -14,7 +14,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 */
 
 //Note: DEBUG_FLAGS must be defined before including UI.h. See UI.h for list of valid flags
-#define DEBUG_FLAGS (DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
+#define DEBUG_FLAGS (DEBUG_TRANSMIT|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
 //available flags: DEBUG_USB|DEBUG_USB_REPORT|DEBUG_TRANSMIT|DEBUG_MULTIMODULE|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE
 
 #include "MultiModule.h"
@@ -73,6 +73,7 @@ char active_usb_port = requested_usb_port;
 OutputChannelDescriptor outChannels[MAX_CHANNELS]; //declare 16 item OutputChannelDescriptor array
 MixerChannelDescriptor mixerChannels[MAX_MIXERS];
 InputDescriptorPool inChannelsPool;
+InputChannelDescriptor* failsafeChannels[MAX_CHANNELS];
 
 
 //#define USE_I2C_DISPLAY
@@ -302,7 +303,7 @@ void setup() {
   Serial.println("starting.");
 
   //initDefaultInputDescriptors(&inChannelsPool);
-  initOutputAndDefaultInputChannelDescriptors(outChannels, &inChannelsPool, mixerChannels);
+  initOutputAndDefaultInputChannelDescriptors(outChannels, &inChannelsPool, mixerChannels, failsafeChannels);
   
 
 
@@ -460,9 +461,18 @@ void updateChannelValues(MultiProtocolStream* s){
     //Serial.print(value);
     setChannelValue(s, i, value);
   }
-
 }
 
+void updateFailsafeValues(MultiProtocolStream* s){
+  for(int i=0; i<MAX_CHANNELS; i++){
+    InputChannelDescriptor* thisFailsafe = failsafeChannels[i];
+    int value =  thisFailsafe->getLatestInputData(thisFailsafe->context, thisFailsafe->id);
+    setChannelValue(s, i, value);
+  }
+  s->header.is_failsafe = 1;
+  transmit(s, streamOutAdditionalProtocolDataLen);
+  s->header.is_failsafe = 0;
+}
 
 void transmit(MultiProtocolStream* s, uint8_t aditional_bytes){
   uint8_t* byteArray = (uint8_t*)s;
@@ -607,7 +617,7 @@ void setupMenuLayout(){
   strlcpy(menuItems[menuNumber].label, "Set Failsafes", MENU_ITEM_LABEL_SIZE);
   menuItems[menuNumber].buttonHandler = failsafeSnapshotMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
-  menuItems[menuNumber].update_period_cycles = 0; //no updates required
+  menuItems[menuNumber].update_period_cycles = 50; //infrequent updates required
   menuNumber++;
 
 
@@ -1202,28 +1212,35 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
 
 void failsafeSnapshotMenuItemHandler(int index, NavButton btnPressed){
   bool updated=false;
+  for(int i=0; i<MAX_CHANNELS && i<12; i++){
+    if(i%3 == 0){
+      u8g2.setCursor(0, 35+7*(i/3));
+    }
+    InputChannelDescriptor* thisFailsafe = failsafeChannels[i];
+    drawLiveChannelMultiBar(i, thisFailsafe->getLatestInputData(thisFailsafe->context, thisFailsafe->id));
+  }
+  u8g2.setCursor(0, 63);
+  u8g2.print("down: update failsafe values");
   if (btnPressed == DOWN_BUTTON){
     updated=true;
-    for(int i=0; i < MAX_CHANNELS; i++){
-      
+    for(int i=0; i<MAX_CHANNELS; i++){
+      failsafeChannels[i]->configureChannelInput(failsafeChannels[i],getOutputChannelValue(i));
     }
+    updateFailsafeValues(&streamOut);
+  }
+  if (btnPressed == BACK_BUTTON){
+    menuSubpageIndex=0;
+    clearMenuContents();
   }
 }
 
 void liveChannelViewMenuItemHandler(int index, NavButton btnPressed){
-  u8g2.setCursor(0,35); //implicit, set by the setCursor line below
+  //u8g2.setCursor(0,35); //implicit, set by the setCursor line below
   for(int i=0; i<MAX_CHANNELS; i++){
     if(i%3 == 0){
       u8g2.setCursor(0, 35+7*(i/3));
     }
-    u8g2.print("Ch ");
-    u8g2.print((int)i);
-    u8g2.print(":");
-    if(i<10){
-      u8g2.print(" ");
-    }
-    u8g2PrintBar(getOutputChannelValue(i),outChannels[i].minRange, outChannels[i].maxRange, 12);
-    u8g2.print(" ");
+    drawLiveChannelValueBar(i);
   }
   
   if(btnPressed == BACK_BUTTON){
@@ -1336,6 +1353,13 @@ void saveModelToFileAtIndex(int index){
 
     mixersArray[i]=mixerObj;
   }
+  JsonArray failsafesArray = newModelDoc["failsafes"].to<JsonArray>();
+  SerialDebugln<DEBUG_SAVELOAD>("saving failsafe values:");
+  for(int i=0; i<MAX_CHANNELS; i++){
+    SerialDebug<DEBUG_SAVELOAD>(failsafeChannels[i]->getLatestInputData(failsafeChannels[i]->context, i));
+    SerialDebug<DEBUG_SAVELOAD>(" ");
+    failsafesArray[i] = failsafeChannels[i]->getLatestInputData(failsafeChannels[i]->context, i);
+  }
   if(debug_level<DEBUG_SAVELOAD>()){
     serializeJson(newModelDoc, Serial); //print json to USB Serial log
   }
@@ -1426,6 +1450,20 @@ bool loadModelFromFileAtIndex(int index){
     }
   } else {
     SerialDebug<DEBUG_SAVELOAD|DEBUG_WARN>("Warning, mixers array invalid or not present");
+  }
+  SerialDebug<DEBUG_SAVELOAD>("\nloading failsafes:\n");
+  JsonArray failsafesArray = modelDoc["failsafes"];
+  if(failsafesArray){
+    for(int i=0; i<MAX_CHANNELS; i++){
+      SerialDebug<DEBUG_SAVELOAD>("\nloading failsafe ");
+      SerialDebug<DEBUG_SAVELOAD>(i);
+      SerialDebug<DEBUG_SAVELOAD>(": ");
+      SerialDebugln<DEBUG_SAVELOAD>((int)failsafesArray[i]);
+      failsafeChannels[i]->configureChannelInput(failsafeChannels[i],failsafesArray[i]);
+    }
+    updateFailsafeValues(&streamOut);
+  } else {
+    SerialDebug<DEBUG_SAVELOAD|DEBUG_WARN>("Warning, failsafes array invalid or not present");
   }
   return true;
 }
@@ -1631,12 +1669,38 @@ void u8g2PrintBar(int value, int minValue, int maxValue, int maxWidth){
   int8_t y = u8g2.getCursorY();
   int8_t initialDrawColor = u8g2.getDrawColor();
   int barWidth = ((value - minValue) * (maxWidth-2))/(maxValue - minValue);
+  //draw outer box
   u8g2.drawBox(x, y-height, maxWidth, height);
   u8g2.setDrawColor(!initialDrawColor);
+  //erase inside of box
   u8g2.drawBox(x+1, y-height+1, maxWidth-2, height-2);
   u8g2.setDrawColor(initialDrawColor);
+  //draw inner bar
   u8g2.drawBox(x+1, y-height+1, barWidth, height-2);
   u8g2.setCursor(x+maxWidth+1, y);
+}
+
+//draw a more complex 2-row bar, such as for showing both an original/default and a live value
+void u8g2PrintMultiBar(int value1,int value2, int minValue, int maxValue, int maxWidth){
+  int8_t height = u8g2.getMaxCharHeight();
+  int8_t x = u8g2.getCursorX();
+  int8_t y = u8g2.getCursorY();
+  int8_t initialDrawColor = u8g2.getDrawColor();
+  int bar1Width = ((value1 - minValue) * (maxWidth-2))/(maxValue - minValue);
+  int bar2Width = ((value2 - minValue) * (maxWidth-2))/(maxValue - minValue);
+  //draw outer box
+  u8g2.drawBox(x, y-height, maxWidth, height);
+  u8g2.setDrawColor(!initialDrawColor);
+  //erase inside of box
+  u8g2.drawBox(x+1, y-height+1, maxWidth-2, height-2);
+  u8g2.setDrawColor(initialDrawColor);
+  //draw bar1
+  u8g2.drawBox(x+1, y-height+1, bar1Width, (height/2)-1);
+  //draw bar2
+  u8g2.drawBox(x+1, y-(height/2), bar2Width, (height/2)-1);
+  u8g2.setCursor(x+maxWidth+1, y);
+
+
 }
 
 //uses u8g2.print, pads excess allocated space with whitespace
@@ -1657,6 +1721,38 @@ void u8g2PrintStrWithMaxLength(const char* str, const int length){
       buf[length] = '\0'; // Null-terminate the string
   }
   u8g2.print(buf);
+}
+
+//overload to provide default value for width
+void drawLiveChannelValueBar(int index){
+  drawLiveChannelValueBar(index, 12);
+}
+
+void drawLiveChannelValueBar(int index, int width){
+  u8g2.print("Ch ");
+  u8g2.print((int)index);
+  u8g2.print(":");
+  if(index<10){
+    u8g2.print(" ");
+  }
+  u8g2PrintBar(getOutputChannelValue(index),outChannels[index].minRange, outChannels[index].maxRange, width);
+  u8g2.print(" ");
+}
+
+//overload to provide default value for width
+void drawLiveChannelMultiBar(int index, int value2){
+  drawLiveChannelMultiBar(index, value2, 12);
+}
+
+void drawLiveChannelMultiBar(int index, int value2, int width){
+  u8g2.print("Ch ");
+  u8g2.print((int)index);
+  u8g2.print(":");
+  if(index<10){
+    u8g2.print(" ");
+  }
+  u8g2PrintMultiBar(getOutputChannelValue(index), value2,outChannels[index].minRange, outChannels[index].maxRange, width);
+  u8g2.print(" ");
 }
 
 
@@ -1859,7 +1955,7 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
   USBInputDeviceDescriptor* descriptor = findUSBDescriptorByDevAddrAndInstance(USBDeviceDescriptors, dev_addr, instance);
   if(descriptor != NULL){
     descriptor -> vid = 0; //mark this descriptor as unused
-    releaseUSBInputChannels(&inChannelsPool, descriptor, outChannels);
+    releaseUSBInputChannels(&inChannelsPool, descriptor, outChannels, failsafeChannels);
   } else {
     SerialDebug<DEBUG_USB>("Warning: unmounted device does not appear to have descriptor, check for erroneous logic");
   }

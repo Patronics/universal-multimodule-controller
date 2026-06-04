@@ -5,6 +5,7 @@
 
 #include "ChannelManager.h"
 #include "MultiModule.h"
+#include "UI.h"
 
 static int clamp(int v, int lo, int hi){
   if (v < lo) return lo;
@@ -249,11 +250,21 @@ InputChannelDescriptor *AllocFixedValueInput(InputDescriptorPool *pool, const ch
   return newInput;
 }
 
+//update a reconfigurable channel value. Only valid for channels of type INPUT_FUNCTION_CONFIG_VALUE
+bool SetConfigValueInput(InputChannelDescriptor *channel, int value){
+  if (channel->inputFunctionType == INPUT_FUNCTION_CONFIG_VALUE){
+    channel->context = (void *)(intptr_t)value;
+    return true;
+  }
+  //attempted to configure invalid channel, do nothing and return error state
+  return false;
+}
+
 //for use with INPUT_FUNCTION_CONFIG_VALUE, extends AllocFixedValueInput to enable reconfiguration
 InputChannelDescriptor *AllocConfigValueInput(InputDescriptorPool *pool, const char* name, int value){
   InputChannelDescriptor *newInput = AllocFixedValueInput(pool, name, value);
   newInput->inputFunctionType = INPUT_FUNCTION_CONFIG_VALUE;
-  newInput->configureChannelInput = NULL;  //TODO: implement this configuration function
+  newInput->configureChannelInput = SetConfigValueInput;
   newInput->cleanupInputContextFn = NULL;
   return newInput;
 }
@@ -319,7 +330,7 @@ void initMixerInputDescriptors(InputDescriptorPool *inputChannelsPool, MixerChan
   }
 }
 
-void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelsPool, MixerChannelDescriptor *mixerChannels){
+void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelsPool, MixerChannelDescriptor (&mixerChannels)[MAX_MIXERS], InputChannelDescriptor* (&failsafeChannels)[MAX_CHANNELS]){
   initDefaultInputDescriptors(inputChannelsPool);
   initMixerInputDescriptors(inputChannelsPool, mixerChannels);
   //build full list of default channels
@@ -333,6 +344,7 @@ void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *output
     p->outputChannelNumber = i;
     p->inputChannelDescriptor->id=i;
     snprintf(p->name, OUTPUT_NAME_LEN, "channel %d", i);
+    failsafeChannels[i] = p->inputChannelDescriptor;
   }
 }
 
@@ -401,14 +413,17 @@ int getFirstFreeUSBInputDescriptorIndex(USBInputDeviceDescriptor* arr){
   return -1;
 }
 
-void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc, OutputChannelDescriptor* outChannelsArr){
-  Serial.print("Freeing USB INPUT");
+void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc, OutputChannelDescriptor* outChannelsArr, InputChannelDescriptor* (&failsafeChannels)[MAX_CHANNELS]){
+  SerialDebug<DEBUG_USB>("Freeing USB INPUT");
   for(int i=0; i < MAX_INPUT_CHANNELS_PER_USB_DEVICE; i++){
     if(desc -> inputChannels[i] != NULL){
       //clean-up any outputs based on this input channel, restore them to default state
       for(int j=0; j< MAX_CHANNELS; j++){
         if(outChannelsArr[j].inputChannelDescriptor == desc -> inputChannels[i]){
-          outChannelsArr[j].inputChannelDescriptor = Pool_FindByIdAndType(pool, j, INPUT_FUNCTION_CONFIG_VALUE);
+          outChannelsArr[j].inputChannelDescriptor = failsafeChannels[i];
+          SerialDebug<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>("Restoring active channel ");
+          SerialDebug<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>(j);
+          SerialDebugln<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>(" to failsafe value");
         }
       }
       //cleanup any data from the input function (generally unused)

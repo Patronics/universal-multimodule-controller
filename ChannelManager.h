@@ -3,6 +3,7 @@
 //#include "usbh_helper.h"
 #include "Adafruit_TinyUSB.h"
 #include "pio_usb.h"
+#include "MultiModule.h"
 
 #ifndef CHANNEL_MANAGER_H
 #define CHANNEL_MANAGER_H
@@ -41,15 +42,17 @@ typedef enum {
     INPUT_FUNCTION_UNKNOWN,
 } InputFunctionType;
 
+typedef struct InputChannelDescriptor InputChannelDescriptor;
+
 //the input function to get updated data. If id is used when generating a value, any given function MUST only be used to handle a single type as defined by InputFunctionType
 typedef int (*GetChannelInputFn)(void* context, int id);
 
 //function for configuring settings for a given input. If no settings available, null ptr instead
-typedef int (*ConfigChannelInputFn)(void* context, int id, NavButton btnPressed);
+typedef bool (*ConfigChannelInputFn)(struct InputChannelDescriptor *channel, int value);
 
 typedef void (*CleanupInputContextFn)(void* context, InputFunctionType inputFunctionType);
 
-typedef struct {
+struct InputChannelDescriptor{
     GetChannelInputFn getLatestInputData; // Function pointer to retrieve latest input data, pass the ID as argument
     ConfigChannelInputFn configureChannelInput;
     CleanupInputContextFn cleanupInputContextFn;  //if non-null, call this function to cleanup context data (such as SimpleFreeInputContext for malloc)
@@ -59,7 +62,7 @@ typedef struct {
     int minRange; // Minimum range value
     int maxRange; // Maximum range value
     char name[INPUT_NAME_LEN]; //short, NULL-terminated ASCII name
-} InputChannelDescriptor;
+};
 
 /* pool structure, allow adding/removing inputs when devices connect */
 typedef struct {
@@ -206,14 +209,14 @@ int Pool_FindPreviousUsedIndex(InputDescriptorPool *pool, int index);
 InputChannelDescriptor* findInputDescriptorWithTypeNameAndId(InputDescriptorPool *pool, InputFunctionType type, const char* name, int id);
 
 void initDefaultInputDescriptors(InputDescriptorPool *pool);
-void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelPool, MixerChannelDescriptor *mixerChannels);
+void initOutputAndDefaultInputChannelDescriptors(OutputChannelDescriptor *outputChannels,InputDescriptorPool *inputChannelPool, MixerChannelDescriptor (&mixerChannels)[MAX_MIXERS], InputChannelDescriptor* (&failsafeChannels)[MAX_CHANNELS]);
 void assignInputChannelDescriptor(OutputChannelDescriptor *outputChannel, InputChannelDescriptor *inputChannel);
 int getLatestInputData(InputChannelDescriptor* input); //use DataProducer to get latest input data
 int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1);
 int defaultInputDataProducer(void* context, int id);
 int fixedInputDataProducer(void* context, int id);
 int getFirstFreeUSBInputDescriptorIndex(USBInputDeviceDescriptor* arr);
-void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc, OutputChannelDescriptor *outChannelsArr);
+void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor *desc, OutputChannelDescriptor *outChannelsArr, InputChannelDescriptor* (&failsafeChannels)[MAX_CHANNELS]);
 USBInputDeviceDescriptor* findUSBDescriptorByDevAddrAndInstance(USBInputDeviceDescriptor* arr, uint8_t dev_addr, uint8_t instance);
 InputChannelDescriptor *AllocateUSBKeyboardNumberInputChannel(InputDescriptorPool *pool, int id, const char* name, USBInputDeviceDescriptor * descriptor);
 USBGamepadContextType* AllocateUSBGamepadStickChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor * descriptor);
