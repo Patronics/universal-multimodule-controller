@@ -960,6 +960,8 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
   }
   else if (btnPressed == NO_BUTTON_PRESSED){  //periodic refresh: no complete refresh needed, but live value may have changed, so redraw that portion
     InputChannelDescriptor* currentInputDescriptor = outChannels[menuSubpageIndex].inputChannelDescriptor;
+    u8g2.setCursor(0, 40);
+    drawLiveChannelValueBar(menuSubpageIndex, 100, "");
     u8g2.setCursor(0,56);
     u8g2.print("value: '");
     u8g2.print(getLatestInputData(currentInputDescriptor, menuSubpageIndex));
@@ -977,6 +979,8 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
     u8g2.print(" \"");
     u8g2.print(outChannels[menuSubpageIndex].name);
     u8g2.print("\"                ");
+    u8g2.setCursor(0, 40);
+    drawLiveChannelValueBar(menuSubpageIndex, 100, "");
     u8g2.setCursor(0,56);
     u8g2.print("value: '");
     u8g2.print(getLatestInputData(currentInputDescriptor, menuSubpageIndex));
@@ -1765,6 +1769,12 @@ void drawLiveChannelValueBar(int index, int width){
   if(index<10){
     u8g2.print(" ");
   }
+  u8g2PrintBar(getOutputChannelValue(index),outChannels[index].minRange, outChannels[index].maxRange, width);
+  u8g2.print(" ");
+}
+
+void drawLiveChannelValueBar(int index, int width, char* description){
+  u8g2.print(description);
   u8g2PrintBar(getOutputChannelValue(index),outChannels[index].minRange, outChannels[index].maxRange, width);
   u8g2.print(" ");
 }
