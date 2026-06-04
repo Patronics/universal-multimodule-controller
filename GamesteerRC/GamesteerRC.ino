@@ -14,8 +14,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 */
 
 //Note: DEBUG_FLAGS must be defined before including UI.h. See UI.h for list of valid flags
-#define DEBUG_FLAGS (DEBUG_USB|DEBUG_USB_REPORT|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
-//DEBUG_MULTIMODULE
+#define DEBUG_FLAGS (DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
 //available flags: DEBUG_USB|DEBUG_USB_REPORT|DEBUG_TRANSMIT|DEBUG_MULTIMODULE|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE
 
 #include "MultiModule.h"
@@ -427,31 +426,36 @@ static int clamp(int v, int lo, int hi){
   return v;
 }
 
+int getOutputChannelValue(int channelIndex){
+  OutputChannelDescriptor* outChannel = &outChannels[channelIndex];
+  InputChannelDescriptor* inChannel = outChannel->inputChannelDescriptor;
+  int value = getLatestInputData(inChannel);
+  //scale values as needed
+  if(inChannel->minRange != outChannel->minRange || inChannel->maxRange != outChannel->maxRange){
+    int inMin = inChannel->minRange;
+    int inMax = inChannel->maxRange;
+    int outMin = outChannel->minRange;
+    int outMax = outChannel->maxRange;
+
+    // clamp input to its expected range
+    value = clamp(value, inMin, inMax);
+    // avoid division by zero if input range is empty
+    int inSpan = inMax - inMin;
+    if (inSpan == 0) {
+      // no span: map directly to outMin (or midpoint)
+      value = outMin;
+    } else {
+      // perform integer linear mapping: out = outMin + (value - inMin) * outSpan / inSpan
+      int outSpan = outMax - outMin;
+      value = outMin + (int)((long)(value - inMin) * outSpan / inSpan);
+    }
+  }
+  return value;
+}
+
 void updateChannelValues(MultiProtocolStream* s){
   for(int i=0; i<MAX_CHANNELS; i++){
-    OutputChannelDescriptor* outChannel = &outChannels[i];
-    InputChannelDescriptor* inChannel = outChannel->inputChannelDescriptor;
-    int value = getLatestInputData(inChannel);
-    //scale values as needed
-    if(inChannel->minRange != outChannel->minRange || inChannel->maxRange != outChannel->maxRange){
-      int inMin = inChannel->minRange;
-      int inMax = inChannel->maxRange;
-      int outMin = outChannel->minRange;
-      int outMax = outChannel->maxRange;
-
-      // clamp input to its expected range
-      value = clamp(value, inMin, inMax);
-      // avoid division by zero if input range is empty
-      int inSpan = inMax - inMin;
-      if (inSpan == 0) {
-        // no span: map directly to outMin (or midpoint)
-        value = outMin;
-      } else {
-        // perform integer linear mapping: out = outMin + (value - inMin) * outSpan / inSpan
-        int outSpan = outMax - outMin;
-        value = outMin + (int)((long)(value - inMin) * outSpan / inSpan);
-      }
-    }
+    int value = getOutputChannelValue(i);
     //Serial.print("setting value:");
     //Serial.print(value);
     setChannelValue(s, i, value);
@@ -606,13 +610,12 @@ void setupMenuLayout(){
   menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
 
-  /*
-  //feature replaced by mixer
-  strlcpy(menuItems[menuNumber].label, "Values", MENU_ITEM_LABEL_SIZE);
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+
+  strlcpy(menuItems[menuNumber].label, "Live Channels", MENU_ITEM_LABEL_SIZE);
+  menuItems[menuNumber].buttonHandler = liveChannelViewMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
+  menuItems[menuNumber].update_period_cycles = 10; //frequent updates required
   menuNumber++;
-  */
 
 //////// system-menu items
   menuItems = sysMenu;
@@ -1207,6 +1210,28 @@ void failsafeSnapshotMenuItemHandler(int index, NavButton btnPressed){
   }
 }
 
+void liveChannelViewMenuItemHandler(int index, NavButton btnPressed){
+  u8g2.setCursor(0,35); //implicit, set by the setCursor line below
+  for(int i=0; i<MAX_CHANNELS; i++){
+    if(i%3 == 0){
+      u8g2.setCursor(0, 35+7*(i/3));
+    }
+    u8g2.print("Ch ");
+    u8g2.print((int)i);
+    u8g2.print(":");
+    if(i<10){
+      u8g2.print(" ");
+    }
+    u8g2PrintBar(getOutputChannelValue(i),outChannels[i].minRange, outChannels[i].maxRange, 12);
+    u8g2.print(" ");
+  }
+  
+  if(btnPressed == BACK_BUTTON){
+    menuSubpageIndex=0;
+    clearMenuContents();
+  }
+}
+
 void modelSaveLoadMenuItemHandler(int index, NavButton btnPressed){
   bool updated=false;
   if (btnPressed == LEFT_BUTTON){
@@ -1227,6 +1252,7 @@ void modelSaveLoadMenuItemHandler(int index, NavButton btnPressed){
   } else if( btnPressed == OK_BUTTON){
     updated=true;
   } else if (btnPressed == BACK_BUTTON){
+    menuSubpageIndex=0;
     clearMenuContents();
   }
   if(updated){
@@ -1597,6 +1623,20 @@ void u8g2PrintPadding(){
   u8g2.drawVLine(x, y-(height-1), height);
   u8g2.setCursor(x+1, y);
   u8g2.setDrawColor(initialDrawColor);
+}
+
+void u8g2PrintBar(int value, int minValue, int maxValue, int maxWidth){
+  int8_t height = u8g2.getMaxCharHeight();
+  int8_t x = u8g2.getCursorX();
+  int8_t y = u8g2.getCursorY();
+  int8_t initialDrawColor = u8g2.getDrawColor();
+  int barWidth = ((value - minValue) * (maxWidth-2))/(maxValue - minValue);
+  u8g2.drawBox(x, y-height, maxWidth, height);
+  u8g2.setDrawColor(!initialDrawColor);
+  u8g2.drawBox(x+1, y-height+1, maxWidth-2, height-2);
+  u8g2.setDrawColor(initialDrawColor);
+  u8g2.drawBox(x+1, y-height+1, barWidth, height-2);
+  u8g2.setCursor(x+maxWidth+1, y);
 }
 
 //uses u8g2.print, pads excess allocated space with whitespace
