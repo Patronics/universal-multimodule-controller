@@ -961,7 +961,17 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
   else if (btnPressed == NO_BUTTON_PRESSED){  //periodic refresh: no complete refresh needed, but live value may have changed, so redraw that portion
     InputChannelDescriptor* currentInputDescriptor = outChannels[menuSubpageIndex].inputChannelDescriptor;
     u8g2.setCursor(0, 40);
-    drawLiveChannelValueBar(menuSubpageIndex, 100, "");
+    drawLiveChannelValueBar(menuSubpageIndex, 120, "");
+    if(currentInputDescriptor->inputFunctionType == INPUT_FUNCTION_MIXER){
+      MixerChannelDescriptor *mixer = (MixerChannelDescriptor *)currentInputDescriptor->context;
+      u8g2.setCursor(0, 48);
+      drawLiveInputBar(mixer->inputChannel1Descriptor, 40, " A:");
+      u8g2.print(" ");
+      u8g2.print(MixerCombineOperationString[mixer->operation]);
+      if(mixer->operation != MIXER_OP_CH1_ONLY){
+        drawLiveInputBar(mixer->inputChannel2Descriptor, 40, "B:");
+      }
+    }
     u8g2.setCursor(0,56);
     u8g2.print("value: '");
     u8g2.print(getLatestInputData(currentInputDescriptor, menuSubpageIndex));
@@ -980,7 +990,20 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
     u8g2.print(outChannels[menuSubpageIndex].name);
     u8g2.print("\"                ");
     u8g2.setCursor(0, 40);
-    drawLiveChannelValueBar(menuSubpageIndex, 100, "");
+    drawLiveChannelValueBar(menuSubpageIndex, 120, "");
+    if(currentInputDescriptor->inputFunctionType == INPUT_FUNCTION_MIXER){
+      MixerChannelDescriptor *mixer = (MixerChannelDescriptor *)currentInputDescriptor->context;
+      u8g2.setCursor(0, 48);
+      drawLiveInputBar(mixer->inputChannel1Descriptor, 40, "A:");
+      u8g2.print(" ");
+      u8g2.print(MixerCombineOperationString[mixer->operation]);
+      if(mixer->operation != MIXER_OP_CH1_ONLY){
+        drawLiveInputBar(mixer->inputChannel2Descriptor, 40, "B:");
+      }
+    } else {     // if mixer input not relevant, erase region
+      u8g2.setCursor(0, 47);
+      u8g2.print("                                ");
+    }
     u8g2.setCursor(0,56);
     u8g2.print("value: '");
     u8g2.print(getLatestInputData(currentInputDescriptor, menuSubpageIndex));
@@ -1777,6 +1800,12 @@ void drawLiveChannelValueBar(int index, int width, char* description){
   u8g2.print(description);
   u8g2PrintBar(getOutputChannelValue(index),outChannels[index].minRange, outChannels[index].maxRange, width);
   u8g2.print(" ");
+}
+
+void drawLiveInputBar(InputChannelDescriptor *channel, int width, char* description){
+  u8g2.print(description);
+  u8g2PrintBar(getLatestInputData(channel, -1),channel->minRange, channel->maxRange, width);
+
 }
 
 //overload to provide default value for width
