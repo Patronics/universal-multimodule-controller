@@ -432,26 +432,7 @@ int getOutputChannelValue(int channelIndex){
   InputChannelDescriptor* inChannel = outChannel->inputChannelDescriptor;
   int value = getLatestInputData(inChannel, channelIndex);
   //scale values as needed
-  if(inChannel->minRange != outChannel->minRange || inChannel->maxRange != outChannel->maxRange){
-    int inMin = inChannel->minRange;
-    int inMax = inChannel->maxRange;
-    int outMin = outChannel->minRange;
-    int outMax = outChannel->maxRange;
-
-    // clamp input to its expected range
-    value = clamp(value, inMin, inMax);
-    // avoid division by zero if input range is empty
-    int inSpan = inMax - inMin;
-    if (inSpan == 0) {
-      // no span: map directly to outMin (or midpoint)
-      value = outMin;
-    } else {
-      // perform integer linear mapping: out = outMin + (value - inMin) * outSpan / inSpan
-      int outSpan = outMax - outMin;
-      value = outMin + (int)((long)(value - inMin) * outSpan / inSpan);
-    }
-  }
-  return value;
+  return normalizeScaleRange(value, inChannel->minRange, inChannel->maxRange, outChannel->minRange, outChannel->maxRange);
 }
 
 int getFailsafeChannelValue(int channelIndex){
@@ -1166,7 +1147,7 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
     //sample values for formatting
     u8g2PrintStrWithMaxLength(activeMixer->currentlyEditingMixer->name,7);
     //u8g2.print(" Mix 0:");
-    u8g2.setCursor(100,32);
+    u8g2.setCursor(99,32);
     u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_OPERATION);
     u8g2PrintPadding();
     u8g2.print("OP:");
@@ -1207,7 +1188,7 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
       } else {
         u8g2.print("no ");
       }
-      u8g2.setCursor(0,58);
+      u8g2.setCursor(0,57);
       u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_A_OFFSET);
       u8g2.print("Offset:");
       u8g2.print(activeMixer->currentlyEditingMixer->channel1Offset);
@@ -1246,7 +1227,7 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
         } else {
           u8g2.print("no ");
         }
-        u8g2.setCursor(85,58);
+        u8g2.setCursor(85,57);
         u8g2.setDrawColor(activeMixer->mixerActiveEditState != MIXER_EDIT_STATE_B_OFFSET);
         u8g2.print("Offset:");
         u8g2.print(activeMixer->currentlyEditingMixer->channel2Offset);
@@ -1263,8 +1244,14 @@ void mixerMenuItemHandler(int index, NavButton btnPressed){
   u8g2.print(getLatestInputData(activeMixer->currentlyEditingMixer->mixerResultDescriptor, -1));
   u8g2.setCursor(2,63);
   u8g2.print(evaluateSingleChannelMixerValue(activeMixer->currentlyEditingMixer, true));
-  u8g2.setCursor(95,63);
+  u8g2.setCursor(105,63);
   u8g2.print(evaluateSingleChannelMixerValue(activeMixer->currentlyEditingMixer, false));
+  u8g2.setCursor(20, 64);
+  drawLiveInputBar(activeMixer->currentlyEditingMixer->inputChannel1Descriptor, 10, "");
+  u8g2.setCursor(90, 64);
+  drawLiveInputBar(activeMixer->currentlyEditingMixer->inputChannel2Descriptor, 10, "");
+  u8g2.setCursor(48, 56);
+  drawLiveInputBar(activeMixer->currentlyEditingMixer->mixerResultDescriptor, 34, "");
 }
 
 void failsafeSnapshotMenuItemHandler(int index, NavButton btnPressed){
@@ -1796,13 +1783,13 @@ void drawLiveChannelValueBar(int index, int width){
   u8g2.print(" ");
 }
 
-void drawLiveChannelValueBar(int index, int width, char* description){
+void drawLiveChannelValueBar(int index, int width, String description){
   u8g2.print(description);
   u8g2PrintBar(getOutputChannelValue(index),outChannels[index].minRange, outChannels[index].maxRange, width);
   u8g2.print(" ");
 }
 
-void drawLiveInputBar(InputChannelDescriptor *channel, int width, char* description){
+void drawLiveInputBar(InputChannelDescriptor *channel, int width, String description){
   u8g2.print(description);
   u8g2PrintBar(getLatestInputData(channel, -1),channel->minRange, channel->maxRange, width);
 

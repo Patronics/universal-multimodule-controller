@@ -38,7 +38,7 @@ int defaultInputDataProducer(void* context, int id, int outChannelId){
   (void)context; // explicitly ignore incoming context
   // Provide a consistent hardcoded value for fixedInputDataProducer to return.
   // Use intptr_t cast so we can pass an integer via the void* context parameter.
-  const int midpoint = 1024;
+  const int midpoint = NATIVE_MID_VALUE;
   return fixedInputDataProducer((void *)(intptr_t)midpoint, id, outChannelId);
 }
 
@@ -57,9 +57,33 @@ int USBGamepadAnalogDataProducer(void* context, int id, int outChannelId){
   return usbGamepadContext->parentDeviceDescriptor->latest_report[id];
 }
 
+//overload to easily use the system's native scale 0-2047 (11 bit values)
+int normalizeScaleRange(int value, int inMin, int inMax){
+  return normalizeScaleRange(value, inMin, inMax, NATIVE_MIN_VALUE, NATIVE_MAX_VALUE);
+}
+
+int normalizeScaleRange(int value, int inMin, int inMax, int outMin, int outMax){
+  // clamp input to its expected range
+  value = clamp(value, inMin, inMax);
+   if(inMin != outMin || inMax != outMax){
+    // avoid division by zero if input range is empty
+    int inSpan = inMax - inMin;
+    if (inSpan == 0) {
+      // no span: map directly to midpoint
+      value = (outMin+outMax)/2;
+    } else {
+      // perform integer linear mapping: out = outMin + (value - inMin) * outSpan / inSpan
+      int outSpan = outMax - outMin;
+      value = outMin + (int)((long)(value - inMin) * outSpan / inSpan);
+    }
+  }
+  return value;
+}
+
 int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1){
   if(channel1){
     int channel1Value = getLatestInputData(mixer->inputChannel1Descriptor, -1);
+    channel1Value = normalizeScaleRange(channel1Value, mixer->inputChannel1Descriptor->minRange, mixer->inputChannel1Descriptor->maxRange);
     channel1Value = channel1Value * mixer->channel1Scale/100;
     channel1Value = channel1Value + mixer->channel1Offset;
     if(mixer->channel1Invert){
@@ -69,6 +93,7 @@ int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1
   }
   //else channel 2:
   int channel2Value = getLatestInputData(mixer->inputChannel2Descriptor, -1);
+  channel2Value = normalizeScaleRange(channel2Value, mixer->inputChannel2Descriptor->minRange, mixer->inputChannel2Descriptor->maxRange);
   channel2Value = channel2Value * mixer->channel2Scale/100;
   channel2Value = channel2Value + mixer->channel2Offset;
   if(mixer->channel2Invert){
@@ -84,7 +109,7 @@ int evaluateMixerValue(MixerChannelDescriptor* mixer){
   }
   int channel1Value = evaluateSingleChannelMixerValue(mixer, true);
   if(mixer->operation == MIXER_OP_CH1_ONLY){
-    clamp(channel1Value, mixer->mixerResultDescriptor->minRange, mixer->mixerResultDescriptor->maxRange);
+    channel1Value = clamp(channel1Value, mixer->mixerResultDescriptor->minRange, mixer->mixerResultDescriptor->maxRange);
     return channel1Value;
   }
   //otherwise use both channel 1 and channel 2 values
@@ -94,36 +119,76 @@ int evaluateMixerValue(MixerChannelDescriptor* mixer){
   }
   int channel2Value = evaluateSingleChannelMixerValue(mixer, false);
   int mixedValue;
+  //useful precursors for signed operations, treat 1024 as midpoint
+  int channel1Centered = channel1Value - NATIVE_MID_VALUE;
+  int channel2Centered = channel2Value - NATIVE_MID_VALUE;
   switch (mixer->operation){
     case MIXER_OP_ADD:
       mixedValue = channel1Value + channel2Value;
       break;
-    case MIXER_OP_SUB:
-      mixedValue = channel1Value - channel2Value;
+    case MIXER_OP_ADDS:
+      mixedValue = channel1Centered + channel2Centered + NATIVE_MID_VALUE;
+      break;
+    case MIXER_OP_AVG:
+      mixedValue = (channel1Value + channel2Value + 1)/2;
       break;
     case MIXER_OP_DIFF:
       mixedValue = abs(channel1Value - channel2Value);
       break;
+    case MIXER_OP_SUB:
+      mixedValue = channel1Value - channel2Value;
+      break;
+    case MIXER_OP_SUBS:
+      mixedValue = channel1Centered - channel2Centered + NATIVE_MID_VALUE;
+      break;
     case MIXER_OP_MUL:
-      mixedValue = (channel1Value * channel2Value);
-      //normalize scale from min to max
-      mixedValue = mixedValue / mixer->mixerResultDescriptor->maxRange + mixer->mixerResultDescriptor->minRange;
+      mixedValue = channel1Value * channel2Value;
+      mixedValue = (mixedValue + (1 << (NATIVE_BITCOUNT - 1))) >> NATIVE_BITCOUNT;       //normalize scale
+      break;
+    case MIXER_OP_MULS:
+      mixedValue = channel1Centered * channel2Centered;
+      mixedValue += (mixedValue >= 0) 
+                   ? (1 << (NATIVE_BITCOUNT - 2))
+                   : -(1 << (NATIVE_BITCOUNT - 2));    //symmetric rounding bias
+      mixedValue >>= (NATIVE_BITCOUNT - 1);            //renormalize
+      mixedValue = mixedValue + 1024;
       break;
     case MIXER_OP_DIV:
       if(channel2Value == 0){
-        mixedValue = mixer->mixerResultDescriptor->maxRange; //div by zero -> max
+        mixedValue = NATIVE_MAX_VALUE; //div by zero -> max
         break;
       }
-      //denormal:
-      //mixedValue = channel1Value / channel2Value;
-      //normalize scale from min to max
-      mixedValue = (mixer->mixerResultDescriptor->maxRange * channel1Value) / channel2Value;
+      mixedValue = (NATIVE_MAX_VALUE * channel1Value + channel2Value/2) / channel2Value; //normalize scale
+      break;
+    case MIXER_OP_DIVS:
+      if(channel2Centered == 0) { //div by zero -> max or -max
+        mixedValue = (channel1Centered >= 0) ? NATIVE_MAX_VALUE : NATIVE_MIN_VALUE;
+        break;
+      }
+      mixedValue = (channel1Centered << (NATIVE_BITCOUNT - 1));
+      mixedValue += (channel2Centered > 0) ? (channel2Centered / 2) : -((-channel2Centered) / 2);  //signed rounding bias
+      mixedValue = mixedValue / channel2Centered;
+      mixedValue += 1024;
       break;
     case MIXER_OP_MIN:
       mixedValue = (channel1Value < channel2Value) ? channel1Value : channel2Value;
       break;
     case MIXER_OP_MAX:
       mixedValue = (channel1Value > channel2Value) ? channel1Value : channel2Value;
+      break;
+    case MIXER_OP_AMIN:
+      if(abs(channel1Centered) <= abs(channel2Centered)){
+        mixedValue = channel1Value;
+      } else {
+        mixedValue = channel2Value;
+      }
+      break;
+    case MIXER_OP_AMAX:
+      if(abs(channel1Centered) >= abs(channel2Centered)){
+        mixedValue = channel1Value;
+      } else {
+        mixedValue = channel2Value;
+      }
       break;
     default:
       mixedValue = 1025; //near-center default value for invalid configurations
@@ -264,8 +329,8 @@ InputChannelDescriptor* findInputDescriptorWithTypeNameAndId(InputDescriptorPool
 //defaults to INPUT_FUNCTION_CONST_FIXED
 InputChannelDescriptor *AllocFixedValueInput(InputDescriptorPool *pool, const char* name, int value){
   InputChannelDescriptor *newInput = Pool_Allocate(pool);
-  newInput->minRange = 0;
-  newInput->maxRange = 2047;
+  newInput->minRange = NATIVE_MIN_VALUE;
+  newInput->maxRange = NATIVE_MAX_VALUE;
   snprintf(newInput->name,INPUT_NAME_LEN, name);
   newInput->inputFunctionType = INPUT_FUNCTION_CONST_FIXED;
   newInput->getLatestInputData = fixedInputDataProducer;
@@ -311,8 +376,8 @@ InputChannelDescriptor *AllocADCInput(InputDescriptorPool *pool, const char* nam
 
 InputChannelDescriptor *AllocDefaultMixerInput(InputDescriptorPool *pool, int mixerIndex, MixerChannelDescriptor * mixerChannel){
   InputChannelDescriptor *newInput = Pool_Allocate(pool);
-  newInput->minRange = 0;
-  newInput->maxRange = 2047;
+  newInput->minRange = NATIVE_MIN_VALUE;
+  newInput->maxRange = NATIVE_MAX_VALUE;
   snprintf(newInput->name,INPUT_NAME_LEN, "Mix %d", mixerIndex);
   newInput->inputFunctionType = INPUT_FUNCTION_MIXER;
   newInput->getLatestInputData = mixerDataProducer;
@@ -325,9 +390,9 @@ InputChannelDescriptor *AllocDefaultMixerInput(InputDescriptorPool *pool, int mi
 
 void initDefaultInputDescriptors(InputDescriptorPool *pool){
   Pool_Init(pool, &defaultInputDescriptor);
-  AllocFixedValueInput(pool, "Zero (fixed)", 0);
-  AllocFixedValueInput(pool, "Mid (fixed)", 1024);
-  AllocFixedValueInput(pool, "Max (fixed)", 2047);
+  AllocFixedValueInput(pool, "Zero (fixed)", NATIVE_MIN_VALUE);
+  AllocFixedValueInput(pool, "Mid (fixed)", NATIVE_MID_VALUE);
+  AllocFixedValueInput(pool, "Max (fixed)", NATIVE_MAX_VALUE);
   AllocADCInput(pool, "ADC0", A0);
   AllocADCInput(pool, "ADC1", A1);
   AllocADCInput(pool, "ADC2", A2);

@@ -28,6 +28,12 @@
 //valid for USB FS only, USB 2 reports may be up to 512 bytes long
 #define HID_REPORT_BUFSIZE 64
 
+//range of output values supported by multi module, also the 'native' range used by the system
+#define NATIVE_MIN_VALUE 0
+#define NATIVE_MID_VALUE 1024
+#define NATIVE_MAX_VALUE 2047
+#define NATIVE_BITCOUNT 11
+
 typedef enum {
     INPUT_FUNCTION_CONST_FIXED,   //hardcoded, nonconfigurable value
     INPUT_FUNCTION_CONFIG_VALUE,  //default value, but configurable
@@ -73,16 +79,23 @@ typedef struct {
     int count;
 } InputDescriptorPool;
 
-
+//mixer operations: a suffix of S indicates the processing targets signed values (-1024 to 1023) rather than raw 0 to 1047 range.
 typedef enum {
     MIXER_OP_CH1_ONLY,    //ignore Channel2, only process channel 1 mix
     MIXER_OP_ADD,
+    MIXER_OP_ADDS,
+    MIXER_OP_AVG,
     MIXER_OP_DIFF,    //get absolute value of difference
-    MIXER_OP_SUB,  
+    MIXER_OP_SUB, 
+    MIXER_OP_SUBS,
     MIXER_OP_MUL,    //multiply values
+    MIXER_OP_MULS,
     MIXER_OP_DIV,    //divide Channel1 by Channel2
+    MIXER_OP_DIVS,
     MIXER_OP_MIN,    //useful for lock-out switch
     MIXER_OP_MAX,
+    MIXER_OP_AMIN,
+    MIXER_OP_AMAX,
     MIXER_OP_ENUM_OVERFLOW,
     MIXER_OP_ENUM_UNDERFLOW=-1
 } MixerCombineOperation;
@@ -90,12 +103,19 @@ typedef enum {
 static const char* MixerCombineOperationString [] = {
     "Ch1",
     "ADD",
+    "ADDS",
+    "AVG",
     "DIFF",
     "SUB",
+    "SUBS",
     "MUL",
+    "MULS",
     "DIV",
+    "DIVS",
     "MIN",
     "MAX",
+    "AMIN",
+    "AMAX",
     "Err"
 };
  
@@ -198,6 +218,9 @@ typedef struct {
     USBInputDeviceDescriptor *parentDeviceDescriptor;
     unsigned long lastUpdateMillis;
 } USBGamepadContextType;
+
+int normalizeScaleRange(int value, int inMin, int inMax, int outMin, int outMax);
+int normalizeScaleRange(int value, int inMin, int inMax);
 
 int Pool_FindIndexById(InputDescriptorPool *pool, int id);
 void Pool_Init(InputDescriptorPool *pool, const InputChannelDescriptor *prototype);
