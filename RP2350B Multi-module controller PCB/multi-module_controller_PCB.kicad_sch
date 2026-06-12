@@ -11929,9 +11929,9 @@
 		)
 		(uuid "0854b8e8-311c-423a-bb3d-a78530493b26")
 	)
-	(text "REV 2 TODO:\nConsider always-on power to USB C CC pins\n- use ADC to detect downstream devices and auto-switch active port"
+	(text "REV 2 TODO:\nConsider always-on power to USB C CC pins\n- use ADC to detect downstream devices and auto-switch active port\nAdjust USB traces for proper impedance matching\nPotentially adjust mounting hole diameter for better compatibility with M3"
 		(exclude_from_sim no)
-		(at 43.942 312.928 0)
+		(at 42.164 319.278 0)
 		(effects
 			(font
 				(size 5 5)
@@ -12094,9 +12094,9 @@
 		)
 		(uuid "85e0bc50-08fc-4d09-ba58-7edb09b2463e")
 	)
-	(text "REV 2 Changes:\nReduce R22, R21, and R20 from 330Ω (or 680Ω) to 22Ω, improving signal response time\nAdd R26 protection resistor\nIncrease R25 from 220Ω to 470Ω to reduce LED brightness\nAdd SD card slot"
+	(text "REV 2 Changes:\nReduce R22, R21, and R20 from 330Ω (or 680Ω) to 22Ω, improving signal response time\nAdd R26 protection resistor\nIncrease R25 from 220Ω to 470Ω to reduce LED brightness\nSwitch VBUS to 3v3 power for display\nAdd SD card slot\nReassign pins for UI buttons as required by SD card"
 		(exclude_from_sim no)
-		(at 40.132 348.996 0)
+		(at 43.434 376.174 0)
 		(effects
 			(font
 				(size 5 5)
@@ -12146,9 +12146,9 @@
 		)
 		(uuid "9418fdd5-2e2c-4fd8-b2cd-e017639df5ff")
 	)
-	(text "TODO: shift J10 pins to push buttons to\nfree up GPIO 25-28 or so for SD card SPI1"
+	(text "TODO: remove internal unused GPIO \nbreakout or assign other pins"
 		(exclude_from_sim no)
-		(at 367.03 225.298 0)
+		(at 369.824 222.25 0)
 		(effects
 			(font
 				(size 2.54 2.54)
