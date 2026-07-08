@@ -15,7 +15,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 
 //Note: DEBUG_FLAGS must be defined before including UI.h. See UI.h for list of valid flags
 #define DEBUG_FLAGS (DEBUG_TRANSMIT|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
-//available flags: DEBUG_USB|DEBUG_USB_REPORT|DEBUG_TRANSMIT|DEBUG_MULTIMODULE|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE
+//available flags: DEBUG_TIME|DEBUG_USB|DEBUG_USB_REPORT|DEBUG_TRANSMIT|DEBUG_MULTIMODULE|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE
 
 #include "MultiModule.h"
 #include "ChannelManager.h"
@@ -65,6 +65,7 @@ struct persistent_settings {
   uint8_t default_subprotocol_mode;
 };
 
+int current_active_model = -1;
 
 //Select active USB port, either 'A' or 'C', or 'Z' to prompt clean-up and shutdown of the ports
 volatile char requested_usb_port = 'C';
@@ -635,7 +636,7 @@ void setupMenuLayout(){
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "Defaults", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 2
-  menuItems[menuNumber].buttonHandler = unimplementedMenuItemHandler;
+  menuItems[menuNumber].buttonHandler = defaultsMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
   menuItems[menuNumber].update_period_cycles = 0; //no updates required
   menuNumber++;
@@ -1293,6 +1294,36 @@ void liveChannelViewMenuItemHandler(int index, NavButton btnPressed){
   }
 }
 
+void defaultsMenuItemHandler(int index, NavButton btnPressed){
+  bool updated = false;
+  if (btnPressed == OK_BUTTON){
+    updated = true;
+  } else if (btnPressed == BACK_BUTTON){
+    menuSubpageIndex=0;
+    clearMenuContents();
+  }
+  if(updated){
+    u8g2.setCursor(0,32);
+    u8g2.print("Current: ");
+    u8g2.setCursor(0,40);
+    u8g2.print("Model: ");
+    if(current_active_model == -1){
+      u8g2.print("None");
+    } else {
+      u8g2.print(current_active_model);
+    }
+    u8g2.print(" ");
+    u8g2.setCursor(0, 48);
+    u8g2.print("Port: ");
+    u8g2.print(active_usb_port);
+    u8g2.drawVLine(62, 25, 39);
+    u8g2.setCursor(64,32);
+    u8g2.print("Default: ");
+    u8g2.setCursor(64, 40);
+    u8g2.print("None");
+  }
+}
+
 void modelSaveLoadMenuItemHandler(int index, NavButton btnPressed){
   bool updated=false;
   if (btnPressed == LEFT_BUTTON){
@@ -1307,10 +1338,15 @@ void modelSaveLoadMenuItemHandler(int index, NavButton btnPressed){
   } else if (btnPressed == UP_BUTTON){
     updated=true;
     saveModelToFileAtIndex(menuSubpageIndex);
+    current_active_model = menuSubpageIndex;
   } else if (btnPressed == DOWN_BUTTON){
     updated=true;
     loadModelFromFileAtIndex(menuSubpageIndex);
+    current_active_model = menuSubpageIndex;
   } else if( btnPressed == OK_BUTTON){
+    if (current_active_model != -1){
+      menuSubpageIndex = current_active_model;
+    }
     updated=true;
   } else if (btnPressed == BACK_BUTTON){
     menuSubpageIndex=0;
