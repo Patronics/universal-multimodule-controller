@@ -69,7 +69,8 @@ int current_active_model = -1;
 
 //Select active USB port, either 'A' or 'C', or 'Z' to prompt clean-up and shutdown of the ports
 volatile char requested_usb_port = 'C';
-char active_usb_port = requested_usb_port;
+volatile char active_usb_port = requested_usb_port;
+volatile bool usb_ready_flag = false; //flag set by USB core when USB device is detected and ready
 
 OutputChannelDescriptor outChannels[MAX_CHANNELS]; //declare 16 item OutputChannelDescriptor array
 MixerChannelDescriptor mixerChannels[MAX_MIXERS];
@@ -249,7 +250,9 @@ void setup() {
  
   u8g2.begin();
   u8g2.setFont(u8g2_font_tom_thumb_4x6_mf);
-
+  u8g2.setCursor(0, 6);
+  u8g2.print("GameSteer RC starting");
+  u8g2.sendBuffer();
   //initialize SerialModule on GPIO 16 and 17 (pins 21 and 22), at 100kbaud, even parity, 2 stop bits
   #ifdef SERIAL_MODULE_RX_PIN
     SerialModule.setRX(SERIAL_MODULE_RX_PIN);
@@ -262,7 +265,6 @@ void setup() {
   #endif
   SerialModule.setFIFOSize(SERIAL_MODULE_BUFFER_SIZE);
   SerialModule.begin(SERIAL_MODULE_BAUD_RATE, SERIAL_8E2);
-
   //initialize stream values
   //start setting up output data structures
   streamOut.header.reserved_bits=0b010101;
@@ -272,7 +274,9 @@ void setup() {
   streamOut.rx_num_power_type.power = 0; //high power
   streamOut.option_protocol = -128; //unknown purpose, matching example from transmitter for now
   streamOut.extended_protocol.telemetry_Invert = 1;
-
+  u8g2.setCursor(0, 12);
+  u8g2.print("Serial Module setup");
+  u8g2.sendBuffer();
   /*while (!Serial) {
     ; // wait for USB serial port to connect
   }*/
@@ -300,20 +304,23 @@ void setup() {
       }
     }
   }
-  
-  loadDefaultSettings();
 
   Serial.println("starting.");
-
+  
   //initDefaultInputDescriptors(&inChannelsPool);
   initOutputAndDefaultInputChannelDescriptors(outChannels, &inChannelsPool, mixerChannels, failsafeChannels);
   
-
-
+  u8g2.setCursor(0, 18);
+  u8g2.print("loading default settings");
+  u8g2.sendBuffer();
+  u8g2.setCursor(0, 24);
+  loadDefaultSettings(true);
+  u8g2.setCursor(0, 30);
+  u8g2.print("ready");
+  u8g2.sendBuffer();
   //Serial.print("output struct:");
   //printStructWithLenAsHex(&streamOut, (sizeof(streamOut)-(9-streamOutAdditionalProtocolDataLen)));
-
-
+  u8g2.clearBuffer();
   setupMenuLayout();
   redrawMenu(0, -1);
   digitalWrite(LED_PIN, LOW);
@@ -640,7 +647,7 @@ void setupMenuLayout(){
   strlcpy(menuItems[menuNumber].label, "Defaults", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 2
   menuItems[menuNumber].buttonHandler = defaultsMenuItemHandler;
   menuItems[menuNumber].index = menuNumber;
-  menuItems[menuNumber].update_period_cycles = 0; //no updates required
+  menuItems[menuNumber].update_period_cycles = 50; //infrequent updates required, primarily for updating display after clearing defaults
   menuNumber++;
 
   strlcpy(menuItems[menuNumber].label, "", MENU_ITEM_LABEL_SIZE);  //reserved for future use, populate memory slot 3
@@ -1297,55 +1304,62 @@ void liveChannelViewMenuItemHandler(int index, NavButton btnPressed){
 }
 
 void defaultsMenuItemHandler(int index, NavButton btnPressed){
-  bool updated = false;
   if (btnPressed == OK_BUTTON){
-    updated = true;
   } else if (btnPressed == BACK_BUTTON){
     menuSubpageIndex=0;
     clearMenuContents();
   } else if (btnPressed == DOWN_BUTTON){
-    updated=true;
     loadDefaultSettings();
   } else if (btnPressed == UP_BUTTON){
-    updated=true;
     saveDefaultSettings();
+  } else if (btnPressed == LEFT_BUTTON){
+    clearDefaultSettings();
+  } else if (btnPressed == RIGHT_BUTTON){
+    //currently unused
   }
-  if(updated){
-    u8g2.setCursor(64,32);
-    u8g2.print("Current: ");
-    u8g2.setCursor(64,40);
+
+  u8g2.setCursor(69,32);
+  u8g2.print("Current: ");
+  u8g2.setCursor(74,38);
+  u8g2.print("Model: ");
+  if(current_active_model == -1){
+    u8g2.print("none");
+  } else {
+    u8g2.print(current_active_model);
+    u8g2.print("   ");
+  }
+  u8g2.print(" ");
+  u8g2.setCursor(74, 44);
+  u8g2.print("Port: ");
+  u8g2.print(requested_usb_port);
+  u8g2.setCursor(5,32);
+  u8g2.print("Default: ");
+  u8g2.setCursor(10, 38);
+  if(checkForDefaultSettingsFile()){
     u8g2.print("Model: ");
-    if(current_active_model == -1){
-      u8g2.print("None");
+    int defaultSettingsModelIndex = getDefaultSettingsModelIndex();
+    if(defaultSettingsModelIndex == -1){
+      u8g2.print("none");
     } else {
-      u8g2.print(current_active_model);
-      u8g2.print("   ");
-    }
-    u8g2.print(" ");
-    u8g2.setCursor(64, 48);
-    u8g2.print("Port: ");
-    u8g2.print(requested_usb_port);
-    u8g2.drawVLine(62, 25, 39);
-    u8g2.setCursor(0,32);
-    u8g2.print("Default: ");
-    u8g2.setCursor(0, 40);
-    if(checkForDefaultSettingsFile()){
-      u8g2.print("Model: ");
       u8g2.print(getDefaultSettingsModelIndex());
-      u8g2.print("   ");
-      u8g2.setCursor(0, 48);
-      u8g2.print("Port: ");
-      u8g2.print(getDefaultSettingsPort());
-    } else { //no settings file present
-      u8g2.print("None");
     }
-
-
-    u8g2.setCursor(0, 62);
-    u8g2.print("Down: Load");
-    u8g2.setCursor(DISPLAY_PIXEL_WIDTH/2, 62);
-    u8g2.print("Up: Save");
+    u8g2.print("   ");
+    u8g2.setCursor(10, 44);
+    u8g2.print("Port: ");
+    u8g2.print(getDefaultSettingsPort());
+  } else { //no settings file present
+    u8g2.print("none       ");
+    u8g2.setDrawColor(0);
+    u8g2.drawBox(0, 38, 63, 26);
+    u8g2.setDrawColor(1);
   }
+  u8g2.drawVLine(62, 25, 39);
+  u8g2.setCursor(0, 56);
+  u8g2.print("Left: Clear");
+  u8g2.setCursor(0, 62);
+  u8g2.print("Down: Load");
+  u8g2.setCursor(DISPLAY_PIXEL_WIDTH/2, 62);
+  u8g2.print("Up: Save");
 }
 
 void modelSaveLoadMenuItemHandler(int index, NavButton btnPressed){
@@ -1488,7 +1502,7 @@ bool loadModelFromFileAtIndex(int index){
   SerialDebug<DEBUG_SAVELOAD>("loading subprotocol:");
   SerialDebug<DEBUG_SAVELOAD>(static_cast<uint32_t>(subprotocol));
   setProtocolMode(&streamOut, protocol, subprotocol);
-  char port = (char)modelDoc["port"].as<unsigned char>() | 'A';
+  char port = (unsigned char)(modelDoc["port"] | (unsigned char)'A');
   SerialDebug<DEBUG_SAVELOAD>("loading usb port:");
   SerialDebugln<DEBUG_SAVELOAD>(port);
   requested_usb_port = port;
@@ -1572,7 +1586,31 @@ bool loadModelFromFileAtIndex(int index){
   return true;
 }
 
+bool wait_for_usb_ready(uint32_t timeout_ms){
+  return wait_for_usb_ready(timeout_ms, false);
+}
+
+bool wait_for_usb_ready(uint32_t timeout_ms, bool printProgressDots) {
+    uint32_t start = millis();
+    int i = 0;
+    while ((millis() - start) < timeout_ms) {
+        if (usb_ready_flag) return true;
+        i++;
+        if (printProgressDots && (i%500 == 0)){
+          u8g2.print(".");
+          u8g2.sendBuffer();
+        }
+        delay(1);
+    }
+    return false;
+}
+
+//default function overload. Pass true to print a status update to the display when waiting for USB init.
 bool loadDefaultSettings(){
+  return loadDefaultSettings(false);
+}
+
+bool loadDefaultSettings(bool printSetupStatus){
   SerialDebug<DEBUG_SAVELOAD>("\nLoading default settings\n");
   if(!LittleFS.exists("/settings/defaults.json")){
     SerialDebug<DEBUG_SAVELOAD|DEBUG_FS>("no defaults file");
@@ -1582,16 +1620,6 @@ bool loadDefaultSettings(){
   JsonDocument defaultsDoc;
   deserializeJson(defaultsDoc, defaultsFile);
   defaultsFile.close();
-  int modelIndex = defaultsDoc["modelIndex"] | -2; //ArduinoJson pipe operator assigns default value of -2 if not present in the document
-  if (modelIndex >= 0){
-    SerialDebug<DEBUG_SAVELOAD>("loading model ");
-    SerialDebug<DEBUG_SAVELOAD>(modelIndex);
-    loadModelFromFileAtIndex(modelIndex);
-    current_active_model = modelIndex;
-  } else { //-1: no module active when saved, -2: modelIndex property not present
-    SerialDebug<DEBUG_SAVELOAD|DEBUG_WARN>("no model configured");
-    current_active_model = -1;
-  }
   char default_usb_port = (unsigned char)(defaultsDoc["port"] | (unsigned char)'N');
   SerialDebug<DEBUG_SAVELOAD>("read port as ");
   SerialDebug<DEBUG_SAVELOAD>(default_usb_port);
@@ -1601,6 +1629,25 @@ bool loadDefaultSettings(){
         requested_usb_port = default_usb_port;
   } else {
     SerialDebug<DEBUG_SAVELOAD|DEBUG_WARN>("no port configured");
+  }
+  if(printSetupStatus){
+    u8g2.print("waiting for USB");
+    u8g2.sendBuffer();
+  }
+  while(active_usb_port != requested_usb_port){
+    //busy loop, wait for usb port change to take effect;
+  }
+  //
+  wait_for_usb_ready(4000, printSetupStatus);
+  int modelIndex = defaultsDoc["modelIndex"] | -2; //ArduinoJson pipe operator assigns default value of -2 if not present in the document
+  if (modelIndex >= 0){
+    SerialDebug<DEBUG_SAVELOAD>("loading model ");
+    SerialDebug<DEBUG_SAVELOAD>(modelIndex);
+    loadModelFromFileAtIndex(modelIndex);
+    current_active_model = modelIndex;
+  } else { //-1: no module active when saved, -2: modelIndex property not present
+    SerialDebug<DEBUG_SAVELOAD|DEBUG_WARN>("no model configured");
+    current_active_model = -1;
   }
   return true;
 }
@@ -1638,6 +1685,10 @@ void saveDefaultSettings(){
   }
   serializeJson(newDefaultsDoc, newDefaultsFile);
   newDefaultsFile.close();
+}
+
+void clearDefaultSettings(){
+  LittleFS.remove("/settings/defaults.json");
 }
 
 
@@ -2131,10 +2182,12 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const *desc_re
     SerialDebug<DEBUG_USB>("unknown HID device:");
     SerialDebugln<DEBUG_USB>(static_cast<uint32_t>(itf_protocol));
   }
+  usb_ready_flag = true;
 }
 
 // Invoked when device with hid interface is un-mounted
 void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance) {
+  usb_ready_flag = false;
   USBInputDeviceDescriptor* descriptor = findUSBDescriptorByDevAddrAndInstance(USBDeviceDescriptors, dev_addr, instance);
   if(descriptor != NULL){
     descriptor -> vid = 0; //mark this descriptor as unused
