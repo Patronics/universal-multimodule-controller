@@ -300,6 +300,8 @@ void setup() {
       }
     }
   }
+  
+  loadDefaultSettings();
 
   Serial.println("starting.");
 
@@ -1301,26 +1303,48 @@ void defaultsMenuItemHandler(int index, NavButton btnPressed){
   } else if (btnPressed == BACK_BUTTON){
     menuSubpageIndex=0;
     clearMenuContents();
+  } else if (btnPressed == DOWN_BUTTON){
+    updated=true;
+    loadDefaultSettings();
+  } else if (btnPressed == UP_BUTTON){
+    updated=true;
+    saveDefaultSettings();
   }
   if(updated){
-    u8g2.setCursor(0,32);
+    u8g2.setCursor(64,32);
     u8g2.print("Current: ");
-    u8g2.setCursor(0,40);
+    u8g2.setCursor(64,40);
     u8g2.print("Model: ");
     if(current_active_model == -1){
       u8g2.print("None");
     } else {
       u8g2.print(current_active_model);
+      u8g2.print("   ");
     }
     u8g2.print(" ");
-    u8g2.setCursor(0, 48);
+    u8g2.setCursor(64, 48);
     u8g2.print("Port: ");
-    u8g2.print(active_usb_port);
+    u8g2.print(requested_usb_port);
     u8g2.drawVLine(62, 25, 39);
-    u8g2.setCursor(64,32);
+    u8g2.setCursor(0,32);
     u8g2.print("Default: ");
-    u8g2.setCursor(64, 40);
-    u8g2.print("None");
+    u8g2.setCursor(0, 40);
+    if(checkForDefaultSettingsFile()){
+      u8g2.print("Model: ");
+      u8g2.print(getDefaultSettingsModelIndex());
+      u8g2.print("   ");
+      u8g2.setCursor(0, 48);
+      u8g2.print("Port: ");
+      u8g2.print(getDefaultSettingsPort());
+    } else { //no settings file present
+      u8g2.print("None");
+    }
+
+
+    u8g2.setCursor(0, 62);
+    u8g2.print("Down: Load");
+    u8g2.setCursor(DISPLAY_PIXEL_WIDTH/2, 62);
+    u8g2.print("Up: Save");
   }
 }
 
@@ -1548,6 +1572,73 @@ bool loadModelFromFileAtIndex(int index){
   return true;
 }
 
+bool loadDefaultSettings(){
+  SerialDebug<DEBUG_SAVELOAD>("\nLoading default settings\n");
+  if(!LittleFS.exists("/settings/defaults.json")){
+    SerialDebug<DEBUG_SAVELOAD|DEBUG_FS>("no defaults file");
+    return false;
+  }
+  File defaultsFile = LittleFS.open("/settings/defaults.json", "r");
+  JsonDocument defaultsDoc;
+  deserializeJson(defaultsDoc, defaultsFile);
+  defaultsFile.close();
+  int modelIndex = defaultsDoc["modelIndex"] | -2; //ArduinoJson pipe operator assigns default value of -2 if not present in the document
+  if (modelIndex >= 0){
+    SerialDebug<DEBUG_SAVELOAD>("loading model ");
+    SerialDebug<DEBUG_SAVELOAD>(modelIndex);
+    loadModelFromFileAtIndex(modelIndex);
+    current_active_model = modelIndex;
+  } else { //-1: no module active when saved, -2: modelIndex property not present
+    SerialDebug<DEBUG_SAVELOAD|DEBUG_WARN>("no model configured");
+    current_active_model = -1;
+  }
+  char default_usb_port = (unsigned char)(defaultsDoc["port"] | (unsigned char)'N');
+  SerialDebug<DEBUG_SAVELOAD>("read port as ");
+  SerialDebug<DEBUG_SAVELOAD>(default_usb_port);
+  if (default_usb_port != 'N'){
+    SerialDebug<DEBUG_SAVELOAD>("Setting port to ");
+    SerialDebug<DEBUG_SAVELOAD>(default_usb_port);
+        requested_usb_port = default_usb_port;
+  } else {
+    SerialDebug<DEBUG_SAVELOAD|DEBUG_WARN>("no port configured");
+  }
+  return true;
+}
+
+bool checkForDefaultSettingsFile(){
+  return (LittleFS.exists("/settings/defaults.json"));
+}
+
+int getDefaultSettingsModelIndex(){
+  File defaultsFile = LittleFS.open("/settings/defaults.json", "r");
+  JsonDocument defaultsDoc;
+  deserializeJson(defaultsDoc, defaultsFile);
+  defaultsFile.close();
+  int modelIndex = defaultsDoc["modelIndex"] | -2; //ArduinoJson pipe operator assigns default value of -2 if not present in the document
+  return modelIndex;
+}
+
+char getDefaultSettingsPort(){
+  File defaultsFile = LittleFS.open("/settings/defaults.json", "r");
+  JsonDocument defaultsDoc;
+  deserializeJson(defaultsDoc, defaultsFile);
+  defaultsFile.close();
+  char default_usb_port = (unsigned char)(defaultsDoc["port"] | (unsigned char)'N');
+  return default_usb_port;
+}
+
+void saveDefaultSettings(){
+  SerialDebug<DEBUG_SAVELOAD>("\nSaving new default settings\n");
+  File newDefaultsFile = LittleFS.open("/settings/defaults.json", "w");
+  JsonDocument newDefaultsDoc;
+  newDefaultsDoc["modelIndex"] = current_active_model;
+  newDefaultsDoc["port"] = (unsigned char)requested_usb_port;
+  if(debug_level<DEBUG_SAVELOAD>()){
+    serializeJson(newDefaultsDoc, Serial);
+  }
+  serializeJson(newDefaultsDoc, newDefaultsFile);
+  newDefaultsFile.close();
+}
 
 
 
