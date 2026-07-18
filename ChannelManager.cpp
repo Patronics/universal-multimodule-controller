@@ -510,7 +510,7 @@ void releaseUSBInputChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor
       //clean-up any outputs based on this input channel, restore them to default state
       for(int j=0; j< MAX_CHANNELS; j++){
         if(outChannelsArr[j].inputChannelDescriptor == desc -> inputChannels[i]){
-          outChannelsArr[j].inputChannelDescriptor = failsafeChannels[i];
+          outChannelsArr[j].inputChannelDescriptor = failsafeChannels[j];
           SerialDebug<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>("Restoring active channel ");
           SerialDebug<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>(j);
           SerialDebugln<DEBUG_USB|DEBUG_WARN|DEBUG_LOG>(" to failsafe value");
