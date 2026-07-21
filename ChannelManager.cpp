@@ -87,7 +87,7 @@ int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1
     channel1Value = channel1Value * mixer->channel1Scale/100;
     channel1Value = channel1Value + mixer->channel1Offset;
     if(mixer->channel1Invert){
-      channel1Value = mixer->inputChannel1Descriptor->maxRange - channel1Value + mixer->inputChannel1Descriptor->minRange;
+      channel1Value = NATIVE_MAX_VALUE - channel1Value + NATIVE_MIN_VALUE;
     }
     return channel1Value;
   }
@@ -97,7 +97,7 @@ int evaluateSingleChannelMixerValue(MixerChannelDescriptor* mixer, bool channel1
   channel2Value = channel2Value * mixer->channel2Scale/100;
   channel2Value = channel2Value + mixer->channel2Offset;
   if(mixer->channel2Invert){
-    channel2Value = mixer->inputChannel2Descriptor->maxRange - channel2Value + mixer->inputChannel2Descriptor->minRange;
+    channel2Value = NATIVE_MAX_VALUE - channel2Value + NATIVE_MIN_VALUE;
   }
   return channel2Value;
 }
