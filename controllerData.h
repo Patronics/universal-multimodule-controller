@@ -17,10 +17,10 @@ inline const USBGamepadLayoutDefinition GAMEPAD_TYPE_SONY_DS4 = {
   .analogInputCount = 6,
   .analogInputReportOffsets = {1, 2, 3, 4, 8, 9},
   .analogInputNames = {"LX", "LY", "RX", "RY", "LT", "RT"},
-  .digitalInputCount = 0,
-  .digitalInputReportByteOffsets = {0}, //value 0 properly initializes empty array with zeros
-  .digitalInputReportBitMask = {0},
-  .digitalInputNames = {"N/A"}
+  .digitalInputCount = 10,
+  .digitalInputReportByteOffsets = {5   , 5   ,  5    , 5    , 6   , 6   , 6    , 6    , 6   , 6     },
+  .digitalInputReportBitMask =     {0x10, 0x20,  0x40 , 0x80 , 0x01, 0x02, 0x10 , 0x20 , 0x40, 0x80  },
+  .digitalInputNames =             {"Sq", "X" ,  "Cir", "Tri", "L1", "R1", "Shr", "Opt", "L3", "R3"  }
 };
 
 inline const USBGamepadLayoutDefinition GAMEPAD_TYPE_SONY_DS5 = {

@@ -57,6 +57,15 @@ int USBGamepadAnalogDataProducer(void* context, int id, int outChannelId){
   return usbGamepadContext->parentDeviceDescriptor->latest_report[id];
 }
 
+//id is a packed value: bottom 8 bits are a bit mask, and all upper bits are byte index
+int USBGamepadDigitalDataProducer(void* context, int id, int outChannelId){
+  USBGamepadContextType *usbGamepadContext = (USBGamepadContextType *) context;
+  if (usbGamepadContext->parentDeviceDescriptor->latest_report[id >> 8] & (id & 0xFF)){
+    return 1;
+  }
+  return 0;
+}
+
 //overload to easily use the system's native scale 0-2047 (11 bit values)
 int normalizeScaleRange(int value, int inMin, int inMax){
   return normalizeScaleRange(value, inMin, inMax, NATIVE_MIN_VALUE, NATIVE_MAX_VALUE);
@@ -473,14 +482,37 @@ InputChannelDescriptor *AllocateUSBGamepadStickInputChannel(InputDescriptorPool 
   return newInput;
 }
 
+//for purely boolean inputs, such as button presses
+//ID corresponds ro a packed value: bottom 8 bits are a bit mask, and all upper bits are byte index ( ID = byteIndex << 8 + bitMask)
+InputChannelDescriptor *AllocateUSBDigitalInputChannel(InputDescriptorPool *pool, USBGamepadContextType *context, int id, const char* name, USBInputDeviceDescriptor * descriptor) {
+  InputChannelDescriptor *newInput = Pool_Allocate(pool);
+  context->parentDeviceDescriptor = descriptor;
+  context->lastUpdateMillis = 0;
+  newInput->minRange = 0x00;
+  newInput->maxRange = 0x01;
+  snprintf(newInput->name,INPUT_NAME_LEN, name);
+  newInput->inputFunctionType = INPUT_FUNCTION_USB_GAMEPAD_BUTTON;
+  newInput->getLatestInputData = USBGamepadDigitalDataProducer;
+  newInput->configureChannelInput = NULL;
+  newInput->cleanupInputContextFn = NULL;
+  newInput->id = id;
+  newInput->context = context;
+  return newInput;
+}
+
 USBGamepadContextType* AllocateUSBGamepadStickChannels(InputDescriptorPool *pool, USBInputDeviceDescriptor * descriptor){
     USBGamepadContextType *newContext = (USBGamepadContextType *)malloc(sizeof (USBGamepadContextType));
     descriptor->contextPointer = newContext;
     for(int i=0; i<descriptor->layoutDef->analogInputCount; i++){
-      //const int stickIndexes[] = {1, 2, 3, 4, 8, 9}; //TODO: replace hardcoded indexes with values as configured by controller type in controllerData.cpp
       char buf[INPUT_NAME_LEN];
       snprintf(buf, INPUT_NAME_LEN, "%s-%s", descriptor->layoutDef->name, descriptor->layoutDef->analogInputNames[i]);
       descriptor->inputChannels[i] = AllocateUSBGamepadStickInputChannel(pool,newContext, descriptor->layoutDef->analogInputReportOffsets[i], buf, descriptor);
+    }
+    for(int i=0; i<descriptor->layoutDef->digitalInputCount; i++){
+      char buf[INPUT_NAME_LEN];
+      snprintf(buf, INPUT_NAME_LEN, "%s-%s", descriptor->layoutDef->name, descriptor->layoutDef->digitalInputNames[i]);
+      int descriptorID = (descriptor->layoutDef->digitalInputReportByteOffsets[i] << 8) + descriptor->layoutDef->digitalInputReportBitMask[i];
+      descriptor->inputChannels[i] = AllocateUSBDigitalInputChannel(pool,newContext, descriptorID, buf, descriptor);
     }
     return newContext;
 }

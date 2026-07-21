@@ -17,6 +17,7 @@ This script reads telemetry data from a 4-in-one multimodule.
 #define DEBUG_FLAGS (DEBUG_TRANSMIT|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE)
 //available flags: DEBUG_TIME|DEBUG_USB|DEBUG_USB_REPORT|DEBUG_TRANSMIT|DEBUG_MULTIMODULE|DEBUG_FS|DEBUG_SAVELOAD|DEBUG_LOG|DEBUG_WARN|DEBUG_ERROR|DEBUG_CORE
 
+
 #include "MultiModule.h"
 #include "ChannelManager.h"
 #include "UI.h"
@@ -966,7 +967,7 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
     u8g2.setCursor(0,56);
     u8g2.print("value: '");
     u8g2.print(getLatestInputData(currentInputDescriptor, menuSubpageIndex));
-    u8g2.print("' from:    ");
+    u8g2.print("' from input:    ");
   }
   if (updated || btnPressed == OK_BUTTON){
     InputChannelDescriptor* currentInputDescriptor = outChannels[menuSubpageIndex].inputChannelDescriptor;
@@ -1000,7 +1001,7 @@ void channelMapMenuItemHandler(int index, NavButton btnPressed){
     u8g2.print(getLatestInputData(currentInputDescriptor, menuSubpageIndex));
     u8g2.print("' from:    ");
     u8g2.setCursor(0,62);
-    u8g2.print("input ch");
+    u8g2.print("ch");
     u8g2.setDrawColor(0);
     u8g2.print(" ");
     u8g2.print(currentInputDescriptor->inputFunctionType, DEC);

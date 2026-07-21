@@ -45,6 +45,7 @@ typedef enum {
     INPUT_FUNCTION_USB_KB_NUMBER, //number 0-9 from USB keyboard
     INPUT_FUNCTION_USB_GAMEPAD_STICK, //analog stick, or other 1-byte values in USB report array
     INPUT_FUNCTION_MIXER,             //internal mixer 'virtual input'
+    INPUT_FUNCTION_USB_GAMEPAD_BUTTON, //digital 1-bit inputs from USB report array
     INPUT_FUNCTION_UNKNOWN,
 } InputFunctionType;
 
