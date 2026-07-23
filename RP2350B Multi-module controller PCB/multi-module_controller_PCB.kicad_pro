@@ -79,6 +79,10 @@
       ],
       "drc_exclusions": [
         [
+          "courtyards_overlap|72105000|74940000|60e84362-d43e-4dc7-ae34-ded0ee14dedf|8d4f2928-712f-43ac-8c9a-46f9bae1ff99",
+          ""
+        ],
+        [
           "footprint_type_mismatch|100000000|100000000|b4431069-7576-4fed-85dc-df5cadaed3b1|00000000-0000-0000-0000-000000000000",
           ""
         ],
@@ -797,7 +801,7 @@
         "uuid": "94683f5c-9cd9-448e-be96-9792537b5cb8"
       }
     ],
-    "used_designators": "",
+    "used_designators": "J12,#PWR60-63,R27-28",
     "variants": []
   },
   "sheets": [
