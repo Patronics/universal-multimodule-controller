@@ -8,11 +8,12 @@ Created by Patrick Leiser and Josh Adriano.
 
 ## Installation
 Use the [Arduino-Pico board core](https://arduino-pico.readthedocs.io/en/latest/) by Earle Philhower
+
 Dependencies:
-U8g2 by oliver
-ArduinoJson by Benoit Blanchon
-Bounce2 by Thomas O Fredericks
-Pico PIO USB by Sekigon-gonnoc
+- U8g2 by oliver
+- ArduinoJson by Benoit Blanchon
+- Bounce2 by Thomas O Fredericks
+- Pico PIO USB by Sekigon-gonnoc
 
 You can program it with the Arduino IDE directly, adjust the menu options as described at the top of `GamesteerRC.ino`.
 
